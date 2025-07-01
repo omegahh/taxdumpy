@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "taxdumpy"
+description = "Python package for efficiently parsing NCBI's taxdump database"
+authors = [
+	{name = "Omega HH", email = "omeganju@gmail.com"}
+]
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"Programming Language :: Python",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: Python :: 3.13",
+	"License :: OSI Approved :: MIT License",
+	"Operating System :: OS Independent",
+]
+license = {file = "LICENSE"}
+keywords = [
+	"metagenomics",
+	"taxonomy",
+	"tree-of-life",
+	"NCBI"
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+	"tqdm",
+	"rapidfuzz"
+]
+dynamic = ["version"]
+
+[project.urls]
+Documentation = "https://github.com/omegahh/taxdumpy"
+Issues = "https://github.com/omegahh/taxdumpy/issues"
+Source = "https://github.com/omegahh/taxdumpy"
+
+[project.scripts]
+taxdumpy = "taxdumpy.__main__:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.version]
+path = "src/taxdumpy/__init__.py"
