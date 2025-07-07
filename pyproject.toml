@@ -28,7 +28,8 @@ keywords = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-	"rapidfuzz"
+	"rapidfuzz",
+	"tqdm"
 ]
 dynamic = ["version"]
 
