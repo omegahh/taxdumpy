@@ -45,6 +45,10 @@ class Taxon:
         return self.node.rank
 
     @property
+    def parent(self) -> int:
+        return self.node.parent
+
+    @property
     def acronym(self) -> str|None:
         return self.node.acronym
 

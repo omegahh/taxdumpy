@@ -6,16 +6,16 @@ Created: 2025-07-06 17:07:57
 
 from typing import Literal
 
-from taxdumpy.basic     import TaxRankError
-from taxdumpy.taxon     import Taxon
-# from taxdumpy.taxdb     import TaxDb
+from taxdumpy.basic import TaxRankError
+from taxdumpy.taxon import Taxon
+from taxdumpy.taxdb import TaxDb
 # from taxdumpy.taxsqlite import TaxSQLite
-
 
 RANKNAMES  = ["species", "genus", "family", "order", "class", "phylum", "superkingdom", "realm"]
 RANK2LEVEL = {k: i for i,k in enumerate(RANKNAMES)}
 LEVEL2RANK = {i: k for i,k in enumerate(RANKNAMES)}
 def upper_rank_id(tax:  Taxon,
+                  taxdb: TaxDb,
                   rank: Literal["species", "genus", "family", "order",
                                 "class", "phylum", "superkingdom", "realm"],
                   ) -> int:
@@ -42,8 +42,7 @@ def upper_rank_id(tax:  Taxon,
             temp_rank = LEVEL2RANK[temp_level]
             if temp_rank in tax.rank_lineage:
                 break;
-        jump_index = tax.rank_lineage.index(temp_rank)
         jump_taxid = tax.taxid_lineage[tax.rank_lineage.index(temp_rank)]
-        jump_taxid = tax.taxid_lineage[jump_index + (high_level - temp_level)]
+        for _ in range(high_level - temp_level):
+            jump_taxid = Taxon(jump_taxid, taxdb).parent
         return jump_taxid
-
