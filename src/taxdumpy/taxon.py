@@ -53,6 +53,10 @@ class Taxon:
         return self.node.acronym
 
     @property
+    def division(self) -> str:
+        return self.node.division
+
+    @property
     def is_legacy(self) -> bool:
         return self.taxid != self.node.taxid
 
