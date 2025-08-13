@@ -33,6 +33,9 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+dev = ["black", "pytest", "build"]
+
 [project.urls]
 Documentation = "https://github.com/omegahh/taxdumpy"
 Issues = "https://github.com/omegahh/taxdumpy/issues"
@@ -46,3 +49,6 @@ allow-direct-references = true
 
 [tool.hatch.version]
 path = "src/taxdumpy/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/taxdumpy"]
