@@ -30,7 +30,15 @@ class TaxSQLite:
         if not self._check_tables():
             self._build_database()
 
-    def __del__(self):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if hasattr(self, '_conn'):
+            self._conn.close()
+
+    def close(self):
+        """Close SQLite connection"""
         if hasattr(self, '_conn'):
             self._conn.close()
 
@@ -50,77 +58,77 @@ class TaxSQLite:
         return repr_str
 
     def _build_database(self):
-        print("Build up TAXDUMP SQLite Database...")
-        c = self._conn.cursor()
-        # 1) Create Tables
-        c.executescript(
-                """
-                CREATE TABLE nodes (
-                    taxid    INTEGER PRIMARY KEY,
-                    parent   INTEGER NOT NULL,
-                    rank     TEXT    NOT NULL,
-                    division TEXT    NOT NULL
-                    );
-                CREATE TABLE names (
-                    taxid      INTEGER NOT NULL,
-                    name       TEXT    NOT NULL,
-                    name_class TEXT    NOT NULL,
-                    PRIMARY KEY (taxid, name_class, name)
-                    );
-                CREATE TABLE merged (
-                    oldtid INTEGER PRIMARY KEY,
-                    newtid INTEGER NOT NULL
-                    );
-                CREATE INDEX idx_names_name        ON names(name);
-                CREATE INDEX idx_names_taxid       ON names(taxid);
-                CREATE INDEX idx_names_taxid_class ON names(taxid, name_class);
-                CREATE INDEX idx_nodes_parent ON nodes(parent);
-                """
-                )
-        self._conn.commit()
+        try:
+            print("Build up TAXDUMP SQLite Database...")
+            c = self._conn.cursor()
+            # 1) Create Tables
+            c.executescript(
+                    """
+                    CREATE TABLE nodes (
+                        taxid    INTEGER PRIMARY KEY,
+                        parent   INTEGER NOT NULL,
+                        rank     TEXT    NOT NULL,
+                        division TEXT    NOT NULL
+                        );
+                    CREATE TABLE names (
+                        taxid      INTEGER NOT NULL,
+                        name       TEXT    NOT NULL,
+                        name_class TEXT    NOT NULL,
+                        PRIMARY KEY (taxid, name_class, name)
+                        );
+                    CREATE TABLE merged (
+                        oldtid INTEGER PRIMARY KEY,
+                        newtid INTEGER NOT NULL
+                        );
+                    CREATE INDEX idx_names_name        ON names(name);
+                    CREATE INDEX idx_names_taxid       ON names(taxid);
+                    CREATE INDEX idx_names_taxid_class ON names(taxid, name_class);
+                    CREATE INDEX idx_nodes_parent ON nodes(parent);
+                    """
+                    )
 
-        # 2) Parsing merged.dmp, division.dmp, delnodes.dmp, names.dmp
-        old2new   = self._import_merged()
-        div2code  = self._import_divcodes()
-        sci_names, eq_names, acr_names = self._import_names()
+            # 2) Parsing merged.dmp, division.dmp, delnodes.dmp, names.dmp
+            old2new   = self._import_merged()
+            div2code  = self._import_divcodes()
+            sci_names, eq_names, acr_names = self._import_names()
 
-        # 3) Insert Nodes
-        rows_nodes = []
-        with open(self._taxdump_dir / "nodes.dmp", 'r') as f:
-            for line in f:
-                cols   = line.split('\t')
-                taxid  = int(cols[0])
-                parent = int(cols[2])
-                parent = old2new[parent] if parent in old2new else parent
-                rank   = cols[4]
-                divc   = div2code[int(cols[8])]
-                rows_nodes.append((taxid, parent, rank, divc))
-        c.executemany(
-                "INSERT INTO nodes VALUES (?,?,?,?)", rows_nodes
-                )
-        self._conn.commit()
+            # 3) Insert Nodes
+            rows_nodes = []
+            with open(self._taxdump_dir / "nodes.dmp", 'r') as f:
+                for line in f:
+                    cols   = line.split('\t')
+                    taxid  = int(cols[0])
+                    parent = int(cols[2])
+                    parent = old2new[parent] if parent in old2new else parent
+                    rank   = cols[4]
+                    divc   = div2code[int(cols[8])]
+                    rows_nodes.append((taxid, parent, rank, divc))
+            c.executemany(
+                    "INSERT INTO nodes VALUES (?,?,?,?)", rows_nodes
+                    )
 
-        # 4) Insert Names
-        rows_names = []
-        for taxid, nm in sci_names.items():
-            rows_names.append((taxid, nm, "scientific"))
-        for taxid, lst in eq_names.items():
-            for nm in lst:
-                rows_names.append((taxid, nm, "equivalent"))
-        for taxid, lst in acr_names.items():
-            for nm in lst:
-                rows_names.append((taxid, nm, "acronym"))
-        c.executemany(
-                "INSERT INTO names VALUES (?,?,?)",
-                rows_names
-                )
-        self._conn.commit()
+            # 4) Insert Names
+            rows_names = []
+            for taxid, nm in sci_names.items():
+                rows_names.append((taxid, nm, "scientific"))
+            for taxid, lst in eq_names.items():
+                for nm in lst:
+                    rows_names.append((taxid, nm, "equivalent"))
+            for taxid, lst in acr_names.items():
+                for nm in lst:
+                    rows_names.append((taxid, nm, "acronym"))
+            c.executemany(
+                    "INSERT INTO names VALUES (?,?,?)",
+                    rows_names
+                    )
 
-        # 5) Insert Legacy Taxids
-        rows_legacy = [(old,new) for old,new in old2new.items()]
-        c.executemany("INSERT INTO merged VALUES (?,?)", rows_legacy)
-        self._conn.commit()
-        pass
+            # 5) Insert Legacy Taxids
+            rows_legacy = [(old,new) for old,new in old2new.items()]
+            c.executemany("INSERT INTO merged VALUES (?,?)", rows_legacy)
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     @cached_property
     def all_names(self) -> list[str]:
@@ -164,9 +172,9 @@ class TaxSQLite:
     def _import_merged(self) -> dict[int,int]:
         old2new = {}
         with open(self._taxdump_dir / "merged.dmp", 'r') as f:
-            for L in f:
-                old, new = L.split('\t')[0], L.split('\t')[2]
-                old2new[int(old)] = int(new)
+            for line in f:
+                parts = line.split('\t')
+                old2new[int(parts[0])] = int(parts[2])
         return old2new
 
     def _import_divcodes(self) -> dict[int,str]:
