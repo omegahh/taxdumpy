@@ -158,7 +158,7 @@ class TaxSQLite(TaxonomyDatabase):
                 }
         return name2taxid
 
-    @property
+    @cached_property
     def delnodes(self) -> set[int]:
         return self._import_delnodes()
 

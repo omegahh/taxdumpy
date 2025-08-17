@@ -24,7 +24,12 @@ class TaxonomyDatabase(ABC):
             taxdump_dir: Path to directory containing NCBI taxdump files
             **kwargs: Backend-specific parameters
         """
-        self._taxdump_dir = Path(taxdump_dir).resolve()
+        # Only set _taxdump_dir if taxdump_dir is valid
+        # Individual backends will handle validation
+        if taxdump_dir is not None:
+            self._taxdump_dir = Path(taxdump_dir).resolve()
+        else:
+            self._taxdump_dir = None
 
     @abstractmethod
     def get_node(self, taxid: Union[int, str]) -> Node:
@@ -83,7 +88,7 @@ class TaxonomyDatabase(ABC):
         """Get mapping from scientific names to taxids."""
         pass
 
-    @property
+    @cached_property
     @abstractmethod
     def delnodes(self) -> Set[int]:
         """Get set of deleted taxids."""

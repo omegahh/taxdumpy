@@ -14,7 +14,8 @@ from typing import Dict, List, Set, Union, Tuple
 from rapidfuzz import process, fuzz
 
 from taxdumpy.basic import (
-    Node, TaxDbError, TaxidError, TaxdumpFileError, ValidationError
+    Node, TaxDbError, TaxidError, TaxdumpFileError, 
+    DatabaseCorruptionError, ValidationError
 )
 from taxdumpy.ansi import u_str, m_color
 from taxdumpy.database import TaxonomyDatabase
@@ -166,7 +167,7 @@ class TaxDb(TaxonomyDatabase):
     def name2taxid(self) -> Dict[str, int]:
         return {node.name:taxid for taxid,node in self._taxid2nodes.items()}
 
-    @property
+    @cached_property
     def delnodes(self) -> set[int]:
         return self._delnodes
 
@@ -518,7 +519,7 @@ class TaxDb(TaxonomyDatabase):
         Print fuzzy search results to console.
 
         Args:
-            kw: Search keyword
+            query: Search keyword
             limit: Maximum number of results to display
         """
         try:
