@@ -3,15 +3,24 @@
 
 __version__ = "0.1.1"
 
-from taxdumpy.taxdb import TaxDb, TaxDbError, TaxidError
+from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxsqlite import TaxSQLite
 from taxdumpy.taxon import Taxon
 from taxdumpy.functions import upper_rank_id
+from taxdumpy.basic import (
+    TaxdumpyError, TaxDbError, TaxidError, TaxRankError,
+    TaxdumpFileError, DatabaseCorruptionError, ValidationError
+)
 
 __all__ = [
         # Exceptions
+        "TaxdumpyError",
         "TaxDbError",
-        "TaxidError",
+        "TaxidError", 
+        "TaxRankError",
+        "TaxdumpFileError",
+        "DatabaseCorruptionError",
+        "ValidationError",
         # Data classes
         "TaxDb",
         "TaxSQLite",
