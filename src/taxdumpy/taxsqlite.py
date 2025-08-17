@@ -10,17 +10,20 @@ import sqlite3
 from pathlib   import Path
 from rapidfuzz import process, fuzz
 from functools import cached_property
+from typing import Union, List, Dict
 
-from taxdumpy.ansi  import u_str, m_color
-from taxdumpy.basic import Node, TaxidError
+from taxdumpy.ansi import u_str, m_color
+from taxdumpy.basic import Node, TaxidError, ValidationError
+from taxdumpy.database import TaxonomyDatabase
 
 
-class TaxSQLite:
+class TaxSQLite(TaxonomyDatabase):
     """
     Create an object of the TaxDb class.
     """
     def __init__(self, taxdump_dir: Path|str):
-        self._taxdump_dir = Path(taxdump_dir).resolve()
+        # Call parent constructor
+        super().__init__(taxdump_dir)
 
         self._db_path = self._taxdump_dir / "taxdump.sqlite"
 
@@ -56,6 +59,10 @@ class TaxSQLite:
         delete_num = len(self.delnodes)
         repr_str += f"\tDeleted nodes:  {delete_num:,}"
         return repr_str
+
+    def __len__(self) -> int:
+        """Return number of taxonomy nodes in database."""
+        return self._conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
 
     def _build_database(self):
         try:
@@ -151,7 +158,7 @@ class TaxSQLite:
                 }
         return name2taxid
 
-    @cached_property
+    @property
     def delnodes(self) -> set[int]:
         return self._import_delnodes()
 
@@ -206,32 +213,61 @@ class TaxSQLite:
                     acr_names.setdefault(tid, []).append(name)
         return sci_names, eq_names, acr_names
 
-    def get_node(self, taxid: int) -> Node:
+    def get_node(self, taxid: Union[int, str]) -> Node:
+        """
+        Get a taxonomy node by taxid.
+
+        Args:
+            taxid: NCBI taxonomy ID (integer or string)
+
+        Returns:
+            Node object containing taxonomy information
+
+        Raises:
+            ValidationError: If taxid is invalid format
+            TaxidError: If taxid is deleted, not found, or suggests alternatives
+        """
+        # Validate and convert taxid using the same validation as TaxDb
+        validated_taxid = self._validate_taxid(taxid)
+        original_taxid = validated_taxid
+
+        # Handle legacy/merged taxids
         r1 = self._conn.execute(
-                "SELECT newtid FROM merged WHERE oldtid=?", (taxid,)
+                "SELECT newtid FROM merged WHERE oldtid=?", (validated_taxid,)
                 ).fetchone()
         if r1:
-            taxid = r1['newtid']
+            validated_taxid = r1['newtid']
+
+        # Check if taxid has been deleted
+        if validated_taxid in self.delnodes:
+            raise TaxidError(
+                    original_taxid,
+                    f"TaxID {original_taxid} has been deleted from NCBI taxonomy",
+                    suggestion="Check NCBI taxonomy for updated taxid or use search function"
+                    )
 
         r = self._conn.execute(
-                "SELECT * FROM nodes WHERE taxid=?", (taxid,)
+                "SELECT * FROM nodes WHERE taxid=?", (validated_taxid,)
                 ).fetchone()
         if not r:
-            if taxid in self.delnodes:
-                raise TaxidError(f"{taxid=} is a deleted taxonomy identifier")
-            else:
-                raise TaxidError(f"{taxid=} is a wrong taxonomy identifier")
+            # Try to find similar taxids for suggestions
+            suggestion = self._suggest_similar_taxids(validated_taxid)
+            raise TaxidError(
+                    original_taxid,
+                    f"TaxID {original_taxid} is not found in the database",
+                    suggestion=suggestion
+                    )
 
         name = self._conn.execute(
-                "SELECT name FROM names WHERE taxid=? AND name_class='scientific'", (taxid,)
+                "SELECT name FROM names WHERE taxid=? AND name_class='scientific'", (validated_taxid,)
                 ).fetchone()["name"]
         eqv  = self._conn.execute(
                 "SELECT group_concat(name,'|') AS a FROM names WHERE taxid=? AND name_class='equivalent'",
-                (taxid,)
+                (validated_taxid,)
                 ).fetchone()["a"]
         acr  = self._conn.execute(
                 "SELECT group_concat(name,'|') AS a FROM names WHERE taxid=? AND name_class='acronym'",
-                (taxid,)
+                (validated_taxid,)
                 ).fetchone()["a"]
         return Node(
                 taxid    = r["taxid"],
@@ -243,10 +279,132 @@ class TaxSQLite:
                 division = r["division"]
                 )
 
-    def fuzzy_search(self, kw: str, limit: int = 10):
-        results = process.extract(kw, self.all_names, scorer=fuzz.WRatio, limit=limit)
-        for name, _, _ in results:
-            tid  = self.name2taxid[name]
-            node = self.get_node(tid)
-            col  = re.sub(kw, m_color, name, flags=re.IGNORECASE)
-            print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
+    @staticmethod
+    def _validate_taxid(taxid: Union[int, str]) -> int:
+        """Validate and convert taxid to integer."""
+        if taxid is None:
+            raise ValidationError("taxid", taxid, "non-None value")
+
+        # Convert string to int if possible
+        if isinstance(taxid, str):
+            if not taxid.strip():
+                raise ValidationError("taxid", taxid, "non-empty string")
+            try:
+                taxid = int(taxid.strip())
+            except ValueError:
+                raise ValidationError(
+                        "taxid",
+                        taxid,
+                        "integer or numeric string"
+                        )
+
+        if not isinstance(taxid, int):
+            raise ValidationError("taxid", type(taxid).__name__, "integer")
+
+        if taxid < 1:
+            raise ValidationError("taxid", taxid, "positive integer")
+
+        return taxid
+
+    def _suggest_similar_taxids(self, taxid: int) -> str:
+        """Suggest similar taxids when lookup fails."""
+        # Find taxids within a reasonable range using SQL
+        similar_taxids = []
+        search_range = 1000
+
+        cursor = self._conn.execute(
+            "SELECT taxid FROM nodes WHERE taxid BETWEEN ? AND ? ORDER BY taxid LIMIT 3",
+            (max(1, taxid - search_range), taxid + search_range)
+        )
+        similar_taxids = [row['taxid'] for row in cursor.fetchall()]
+
+        if similar_taxids:
+            similar_str = ", ".join(map(str, similar_taxids))
+            return f"Try nearby taxids: {similar_str}, or use search function to find organisms"
+        else:
+            return "Use search function to find organisms by name"
+
+    def _rapid_fuzz(self, query: str, limit: int = 10) -> List[Dict[str, Union[str, int]]]:
+        """
+        Perform fuzzy search on organism names.
+
+        Args:
+            query: Search query string
+            limit: Maximum number of results to return
+
+        Returns:
+            List of dictionaries with 'name', 'taxid', and 'score' keys
+
+        Raises:
+            ValidationError: If query or limit are invalid
+        """
+        # Validate inputs (same validation as TaxDb)
+        if not isinstance(query, str):
+            raise ValidationError("query", type(query).__name__, "string")
+
+        if not query.strip():
+            return []
+
+        if not isinstance(limit, int) or limit < 1:
+            raise ValidationError("limit", limit, "positive integer")
+
+        if limit > 1000:
+            limit = 1000
+
+        try:
+            # Perform fuzzy search
+            results = process.extract(
+                    query.strip(),
+                    self.all_names,
+                    scorer=fuzz.WRatio,
+                    limit=limit
+                    )
+
+            # Format results
+            formatted_results = []
+            for name, score, _ in results:
+                try:
+                    taxid = self.name2taxid[name]
+                    formatted_results.append({
+                        'name': name,
+                        'taxid': taxid,
+                        'score': score
+                        })
+                except KeyError:
+                    continue
+
+            return formatted_results
+
+        except Exception as e:
+            from taxdumpy.basic import TaxDbError
+            raise TaxDbError(f"Fuzzy search failed: {str(e)}")
+
+    def fuzzy_search(self, query: str, limit: int = 10) -> None:
+        """
+        Print fuzzy search results to console.
+
+        Args:
+            query: Search query string
+            limit: Maximum number of results to display
+        """
+        try:
+            results = self._rapid_fuzz(query, limit)
+
+            if not results:
+                print(f"No results found for '{query}'")
+                return
+
+            for result in results:
+                tid = result['taxid']
+                name = str(result['name'])
+                try:
+                    node = self.get_node(tid)
+                    # Highlight matching text
+                    col = re.sub(query, m_color, name, flags=re.IGNORECASE)
+                    print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
+                except Exception:
+                    # Skip problematic results silently to maintain consistency with TaxDb
+                    continue
+
+        except Exception as e:
+            print(f"Search error: {e}")

@@ -11,20 +11,24 @@ from taxdumpy.basic import (
     TaxdumpyError, TaxDbError, TaxidError, TaxRankError,
     TaxdumpFileError, DatabaseCorruptionError, ValidationError
 )
+from taxdumpy.database import TaxonomyDatabase, create_database
 
 __all__ = [
         # Exceptions
         "TaxdumpyError",
         "TaxDbError",
-        "TaxidError", 
+        "TaxidError",
         "TaxRankError",
         "TaxdumpFileError",
         "DatabaseCorruptionError",
         "ValidationError",
-        # Data classes
+        # Database classes
+        "TaxonomyDatabase",
         "TaxDb",
         "TaxSQLite",
         "Taxon",
+        # Factory functions
+        "create_database",
         # utilities
         "upper_rank_id"
         ]

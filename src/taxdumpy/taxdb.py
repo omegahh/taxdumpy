@@ -9,21 +9,21 @@ import pickle
 import logging
 from pathlib import Path
 from functools import cached_property
-from typing import Dict, List, Set, Union, Tuple, Optional
+from typing import Dict, List, Set, Union, Tuple
 
 from rapidfuzz import process, fuzz
 
 from taxdumpy.basic import (
-    Node, TaxDbError, TaxidError, TaxdumpFileError, 
-    DatabaseCorruptionError, ValidationError
+    Node, TaxDbError, TaxidError, TaxdumpFileError, ValidationError
 )
 from taxdumpy.ansi import u_str, m_color
+from taxdumpy.database import TaxonomyDatabase
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
-class TaxDb:
+class TaxDb(TaxonomyDatabase):
     """
     Create an object of the TaxDb class for NCBI taxonomy database operations.
 
@@ -41,10 +41,12 @@ class TaxDb:
     REQUIRED_FILES = ['merged.dmp', 'delnodes.dmp', 'division.dmp', 'nodes.dmp', 'names.dmp']
 
     def __init__(self, taxdump_dir: Union[Path, str], fast: bool = False) -> None:
+        # Call parent constructor
+        super().__init__(taxdump_dir)
+
         # Validate inputs
         self._validate_init_params(taxdump_dir, fast)
 
-        self._taxdump_dir = Path(taxdump_dir).resolve()
         self._fast = fast
 
         # Set up file paths
@@ -157,11 +159,11 @@ class TaxDb:
         return taxid2nodes, old2news, del_taxids
 
     @cached_property
-    def all_names(self) -> list[str]:
+    def all_names(self) -> List[str]:
         return [node.name for node in self._taxid2nodes.values()]
 
     @cached_property
-    def name2taxid(self) -> dict[str, int]:
+    def name2taxid(self) -> Dict[str, int]:
         return {node.name:taxid for taxid,node in self._taxid2nodes.items()}
 
     @property
@@ -511,7 +513,7 @@ class TaxDb:
             logger.error(f"Error during fuzzy search: {e}")
             raise TaxDbError(f"Fuzzy search failed: {str(e)}")
 
-    def fuzzy_search(self, kw: str, limit: int = 10) -> None:
+    def fuzzy_search(self, query: str, limit: int = 10) -> None:
         """
         Print fuzzy search results to console.
 
@@ -520,10 +522,10 @@ class TaxDb:
             limit: Maximum number of results to display
         """
         try:
-            results = self._rapid_fuzz(kw, limit)
+            results = self._rapid_fuzz(query, limit)
 
             if not results:
-                print(f"No results found for '{kw}'")
+                print(f"No results found for '{query}'")
                 return
 
             for result in results:
@@ -532,7 +534,7 @@ class TaxDb:
                 try:
                     node = self.get_node(tid)
                     # Highlight matching text
-                    col = re.sub(kw, m_color, name, flags=re.IGNORECASE)
+                    col = re.sub(query, m_color, name, flags=re.IGNORECASE)
                     print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
                 except Exception as e:
                     logger.warning(f"Error displaying result for taxid {tid}: {e}")
