@@ -4,19 +4,21 @@ Author: Hao Hong (omeganju@gmail.com)
 Created: 2025-06-30 19:51:00
 """
 
-from taxdumpy.ansi      import b_str, r_str
-from taxdumpy.taxdb     import TaxDb
+from taxdumpy.ansi import b_str, r_str
+from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxsqlite import Node, TaxSQLite
+
 
 class Taxon:
     """
     Create an object of the Taxon class.
     """
+
     # @line_profiler.profile
-    def __init__(self, taxid: int, taxdb: TaxDb|TaxSQLite):
+    def __init__(self, taxid: int, taxdb: TaxDb | TaxSQLite):
         # taxid, taxonomy node, and lineage
-        self._taxid   = taxid
-        self._node    = taxdb.get_node(taxid)
+        self._taxid = taxid
+        self._node = taxdb.get_node(taxid)
         self._lineage = self._find_lineage(taxdb)
 
     @property
@@ -49,7 +51,7 @@ class Taxon:
         return self.node.parent
 
     @property
-    def acronym(self) -> str|None:
+    def acronym(self) -> str | None:
         return self.node.acronym
 
     @property
@@ -66,7 +68,11 @@ class Taxon:
 
     @property
     def species_taxid(self) -> int:
-        return self.taxid_lineage[self.rank_lineage.index("species")] if self.has_species_level else 0
+        return (
+            self.taxid_lineage[self.rank_lineage.index("species")]
+            if self.has_species_level
+            else 0
+        )
 
     @property
     def taxid_lineage(self) -> list[int]:
@@ -107,7 +113,7 @@ class Taxon:
             print_str += r_str(f" <- [{self.taxid} has been merged!]")
         return print_str
 
-    def _find_lineage(self, taxdb: TaxDb|TaxSQLite) -> list[Node]:
+    def _find_lineage(self, taxdb: TaxDb | TaxSQLite) -> list[Node]:
         lineage = [self.node]
         current_taxid = lineage[-1].taxid
         while lineage[-1].parent != current_taxid:

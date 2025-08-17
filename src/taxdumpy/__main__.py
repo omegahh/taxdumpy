@@ -1,5 +1,4 @@
-"""Taxdumpy main entry point.
-"""
+"""Taxdumpy main entry point."""
 
 import sys
 from taxdumpy.cli import main

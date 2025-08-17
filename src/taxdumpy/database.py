@@ -26,10 +26,7 @@ class TaxonomyDatabase(ABC):
         """
         # Only set _taxdump_dir if taxdump_dir is valid
         # Individual backends will handle validation
-        if taxdump_dir is not None:
-            self._taxdump_dir = Path(taxdump_dir).resolve()
-        else:
-            self._taxdump_dir = None
+        self._taxdump_dir = Path(taxdump_dir).resolve()
 
     @abstractmethod
     def get_node(self, taxid: Union[int, str]) -> Node:
@@ -60,7 +57,9 @@ class TaxonomyDatabase(ABC):
         pass
 
     @abstractmethod
-    def _rapid_fuzz(self, query: str, limit: int = 10) -> List[Dict[str, Union[str, int]]]:
+    def _rapid_fuzz(
+        self, query: str, limit: int = 10
+    ) -> List[Dict[str, Union[str, int]]]:
         """
         Perform fuzzy search on organism names.
 
@@ -135,10 +134,8 @@ class TaxonomyDatabase(ABC):
 
 
 def create_database(
-        taxdump_dir: Union[Path, str],
-        backend: str = "sqlite",
-        **kwargs
-        ) -> TaxonomyDatabase:
+    taxdump_dir: Union[Path, str], backend: str = "sqlite", **kwargs
+) -> TaxonomyDatabase:
     """
     Factory function to create appropriate database backend.
 
@@ -163,14 +160,14 @@ def create_database(
 
     if backend in ("sqlite", "sql"):
         from taxdumpy.taxsqlite import TaxSQLite
+
         return TaxSQLite(taxdump_dir, **kwargs)
     elif backend in ("dict", "memory", "pickle"):
         from taxdumpy.taxdb import TaxDb
+
         return TaxDb(taxdump_dir, **kwargs)
     else:
         valid_backends = ["sqlite", "sql", "dict", "memory", "pickle"]
         raise ValidationError(
-                "backend",
-                backend,
-                f"one of: {', '.join(valid_backends)}"
-                )
+            "backend", backend, f"one of: {', '.join(valid_backends)}"
+        )

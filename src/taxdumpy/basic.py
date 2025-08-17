@@ -4,18 +4,28 @@ from typing import Optional, Union, Any
 
 @dataclass
 class Node:
-    __slots__ = ("taxid","parent","rank","name","equal","acronym","legacy","division")
-    taxid:    int
-    parent:   int
-    rank:     str
-    name:     str
-    equal:    str|None
-    acronym:  str|None
+    __slots__ = (
+        "taxid",
+        "parent",
+        "rank",
+        "name",
+        "equal",
+        "acronym",
+        "legacy",
+        "division",
+    )
+    taxid: int
+    parent: int
+    rank: str
+    name: str
+    equal: str | None
+    acronym: str | None
     division: str
 
 
 class TaxdumpyError(Exception):
     """Base exception class for all taxdumpy errors."""
+
     pass
 
 
@@ -37,7 +47,12 @@ class TaxDbError(TaxdumpyError):
 class TaxidError(TaxdumpyError):
     """Raised when taxid-related operations fail."""
 
-    def __init__(self, taxid: Union[int, str], message: str|None = None, suggestion: str|None = None):
+    def __init__(
+        self,
+        taxid: Union[int, str],
+        message: str | None = None,
+        suggestion: str | None = None,
+    ):
         self.taxid = taxid
         self.suggestion = suggestion
 
@@ -58,7 +73,9 @@ class TaxidError(TaxdumpyError):
 class TaxRankError(TaxdumpyError):
     """Raised when taxonomic rank operations fail."""
 
-    def __init__(self, rank: str, message: str|None = None, valid_ranks: list|None = None):
+    def __init__(
+        self, rank: str, message: str | None = None, valid_ranks: list | None = None
+    ):
         self.rank = rank
         self.valid_ranks = valid_ranks or []
 
@@ -80,7 +97,7 @@ class TaxRankError(TaxdumpyError):
 class TaxdumpFileError(TaxDbError):
     """Raised when there are issues with taxdump files."""
 
-    def __init__(self, filename: str, issue: str, solution: str|None = None):
+    def __init__(self, filename: str, issue: str, solution: str | None = None):
         self.filename = filename
         self.issue = issue
         self.solution = solution
@@ -104,9 +121,11 @@ class DatabaseCorruptionError(TaxDbError):
 class MemoryError(TaxdumpyError):
     """Raised when memory-related issues occur."""
 
-    def __init__(self, operation: str, suggestion: str|None = None):
+    def __init__(self, operation: str, suggestion: str | None = None):
         self.operation = operation
-        default_suggestion = "Try using TaxSQLite instead of TaxDb for memory efficiency"
+        default_suggestion = (
+            "Try using TaxSQLite instead of TaxDb for memory efficiency"
+        )
         self.suggestion = suggestion or default_suggestion
 
         message = f"Memory error during {operation}"
