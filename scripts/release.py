@@ -112,6 +112,13 @@ def upload_to_pypi(test=False):
     repo = "testpypi" if test else "pypi"
     print(f"🚀 Uploading to {'Test ' if test else ''}PyPI...")
 
+    # Check if twine is installed
+    try:
+        run_command("python -m twine --version", capture_output=True)
+    except subprocess.CalledProcessError:
+        print("❌ twine not found. Please install it with: pip install twine")
+        sys.exit(1)
+
     if test:
         run_command("python -m twine upload --repository testpypi dist/*")
     else:
@@ -161,18 +168,18 @@ def main():
     # Create git tag
     create_git_tag(args.version)
 
-    # # Build package
-    # build_package()
-    #
-    # # Upload if requested
-    # if args.upload:
-    #     upload_to_pypi(test=args.test)
-    # else:
-    #     print("📝 Package built. Use --upload to upload to PyPI")
-    #     if args.test:
-    #         print("💡 Use: python -m twine upload --repository testpypi dist/*")
-    #     else:
-    #         print("💡 Use: python -m twine upload dist/*")
+    # Build package
+    build_package()
+
+    # Upload if requested
+    if args.upload:
+        upload_to_pypi(test=args.test)
+    else:
+        print("📝 Package built. Use --upload to upload to PyPI")
+        if args.test:
+            print("💡 Use: python -m twine upload --repository testpypi dist/*")
+        else:
+            print("💡 Use: python -m twine upload dist/*")
 
     print(f"🎉 Release {args.version} completed successfully!")
 
