@@ -43,11 +43,14 @@ def upper_rank_id(
     curr_rank = tax.rank
     if curr_rank not in RANKNAMES:
         raise TaxRankError(
-            f"TAXID={tax.taxid} ({curr_rank=}) is a non-canonical phylogenetic rank"
+            curr_rank,
+            f"TAXID={tax.taxid} ({curr_rank=}) is a non-canonical phylogenetic rank",
+            RANKNAMES,
         )
-    assert rank in RANKNAMES, TaxRankError(
-        f"{rank=} is a non-canonical phylogenetic rank"
-    )
+    if rank not in RANKNAMES:
+        raise TaxRankError(
+            rank, f"{rank=} is a non-canonical phylogenetic rank", RANKNAMES
+        )
     # and check rank levels
     curr_level = RANK2LEVEL[curr_rank]
     high_level = RANK2LEVEL[rank]

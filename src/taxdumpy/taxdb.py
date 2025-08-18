@@ -18,7 +18,6 @@ from taxdumpy.basic import (
     TaxDbError,
     TaxidError,
     TaxdumpFileError,
-    DatabaseCorruptionError,
     ValidationError,
 )
 from taxdumpy.ansi import u_str, m_color
@@ -155,7 +154,11 @@ class TaxDb(TaxonomyDatabase):
             )
 
     def __repr__(self):
-        return f"Taxdump (Dict) Database from {u_str(self._taxdump_dir)}"
+        repr_str = f"Taxdump (Dict) Database from {u_str(self._taxdump_dir)}\n"
+        repr_str += f"\tImported nodes: {len(self):,}\n"
+        repr_str += f"\tLegacy nodes: {len(self._old2news):,}\n"
+        repr_str += f"\tDeleted nodes: {len(self.delnodes):,}"
+        return repr_str
 
     def __len__(self) -> int:
         return len(self._taxid2nodes)
@@ -166,6 +169,11 @@ class TaxDb(TaxonomyDatabase):
                 taxid2nodes, old2news, del_taxids = pickle.load(fin)
         else:
             taxid2nodes, old2news, del_taxids = self._import_nodes()
+            # Save the imported data to pickle for future use
+            try:
+                self._save_pickle(taxid2nodes, old2news, del_taxids)
+            except Exception as e:
+                logger.warning(f"Failed to save pickle file: {e}")
 
         return taxid2nodes, old2news, del_taxids
 
@@ -225,7 +233,7 @@ class TaxDb(TaxonomyDatabase):
                 "Check file permissions and encoding",
             )
 
-        logger.debug(f"Loaded {len(old2new)} merged taxid mappings")
+        logger.debug(f"Loaded {len(old2new):,} merged taxid mappings")
         return old2new
 
     def _import_divcodes(self) -> Dict[int, str]:
@@ -264,7 +272,7 @@ class TaxDb(TaxonomyDatabase):
                 "Check file permissions and encoding",
             )
 
-        logger.debug(f"Loaded {len(div2codes)} division codes")
+        logger.debug(f"Loaded {len(div2codes):,} division codes")
         return div2codes
 
     def _import_delnodes(self) -> Set[int]:
@@ -296,7 +304,7 @@ class TaxDb(TaxonomyDatabase):
                 "Check file permissions and encoding",
             )
 
-        logger.debug(f"Loaded {len(del_taxids)} deleted taxids")
+        logger.debug(f"Loaded {len(del_taxids):,} deleted taxids")
         return del_taxids
 
     def _import_names(
@@ -353,7 +361,7 @@ class TaxDb(TaxonomyDatabase):
             )
 
         logger.debug(
-            f"Loaded {len(sci_names)} scientific names, {len(eq_names)} equivalent names, {len(acr_names)} acronyms"
+            f"Loaded {len(sci_names):,} scientific names, {len(eq_names):,} equivalent names, {len(acr_names):,} acronyms"
         )
         return sci_names, eq_names, acr_names
 
@@ -389,22 +397,30 @@ class TaxDb(TaxonomyDatabase):
                 )
 
                 taxid2nodes[taxid] = node
-        # Finished import all current taxid nodes, extending old_taxids (for compact)
+        # Finished import all current taxid nodes, check for conflicts
         cur_taxids = set(taxid2nodes.keys())
-        assert not old_taxids.intersection(cur_taxids), TaxDbError(
-            "current taxids have legacy taxids"
-        )
+        overlap = old_taxids.intersection(cur_taxids)
+        if overlap:
+            raise TaxDbError(
+                f"Database integrity error: Current taxids have legacy taxids: {sorted(overlap)}"
+            )
 
         return taxid2nodes, old2news, del_taxids
 
-    def dump_taxdump(self):
-        print(f"Writing to {self._pickle}")
+    def _save_pickle(self, taxid2nodes, old2news, del_taxids):
+        """Save processed data to pickle file."""
         with open(self._pickle, "wb") as fout:
             pickle.dump(
-                [self._taxid2nodes, self._old2news, self.delnodes],
+                [taxid2nodes, old2news, del_taxids],
                 fout,
                 protocol=pickle.HIGHEST_PROTOCOL,
             )
+        logger.debug(f"Saved pickle file: {self._pickle}")
+
+    def dump_taxdump(self):
+        """Manually save the current database to pickle file."""
+        print(f"Writing to {self._pickle}")
+        self._save_pickle(self._taxid2nodes, self._old2news, self.delnodes)
         print(f"Taxdump dumped!")
 
     def get_node(self, taxid: Union[int, str]) -> Node:

@@ -54,8 +54,7 @@ class TaxSQLite(TaxonomyDatabase):
 
     def __repr__(self):
         repr_str = f"Taxdump (SQLite) Database from {u_str(self._taxdump_dir)}\n"
-        nodes_num = self._conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-        repr_str += f"\tImported nodes: {nodes_num:,}\n"
+        repr_str += f"\tImported nodes: {len(self):,}\n"
         merged_num = self._conn.execute("SELECT COUNT(*) FROM merged").fetchone()[0]
         repr_str += f"\tLegacy nodes:   {merged_num:,}\n"
         delete_num = len(self.delnodes)

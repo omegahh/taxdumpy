@@ -271,18 +271,17 @@ def main(args: Optional[List[str]] = None) -> int:
 
 def _handle_cache_command(args, taxdb_path: Path) -> int:
     """Handle the cache command."""
-    print(f"🗄️  Building taxonomy databases in {taxdb_path}")
+    print(f"🗄️ Building taxonomy databases in {taxdb_path}")
 
     try:
-        # Build SQLite database
-        print("📦 Building SQLite database...")
-        sqlite_file = taxdb_path / "taxdump.sqlite"
-        sqlite_file.unlink(missing_ok=True)
-        taxsqlite = TaxSQLite(taxdb_path)
-        print(f"✅ SQLite database created: {sqlite_file}")
-        taxsqlite.close()
-
         if not args.taxidf:
+            # Build SQLite database
+            print("📦 Building SQLite database...")
+            sqlite_file = taxdb_path / "taxdump.sqlite"
+            sqlite_file.unlink(missing_ok=True)
+            taxsqlite = TaxSQLite(taxdb_path)
+            print(f"✅ SQLite database created: {sqlite_file}")
+            taxsqlite.close()
             # Build full pickle cache
             print("📦 Building full pickle cache...")
             pickle_file = taxdb_path / "taxdump.pickle"
@@ -345,25 +344,26 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
         print(f"📊 Full database contains {len(taxdb):,} taxids")
 
         print("🔍 Finding lineages for specified taxids...")
-        kept_taxids = set()
-        found_taxids = 0
 
-        for taxid in tqdm(all_taxids, desc="Processing taxids", ncols=120):
-            try:
-                taxon = Taxon(taxid, taxdb)
-                kept_taxids.update(taxon.taxid_lineage)
-                found_taxids += 1
-            except TaxidError:
-                logging.warning(f"TaxID {taxid} not found in database")
-                continue
+        kept_taxids = []
+        for taxid in tqdm(
+            taxdb._taxid2nodes.keys(), desc="Loop-over all taxids", ncols=80
+        ):
+            taxon = Taxon(taxid, taxdb)
+            lineage_taxids = set(taxon.taxid_lineage)
+            if lineage_taxids.intersection(all_taxids):
+                kept_taxids.extend(taxon.taxid_lineage)
+        kept_taxids = set(kept_taxids)
 
-        print(f"✅ Found {found_taxids}/{len(all_taxids)} taxids in database")
         print(f"📊 Keeping {len(kept_taxids):,} total taxids (including lineages)")
 
         # Create filtered database
         kept_taxid2nodes = {
             k: v for k, v in taxdb._taxid2nodes.items() if k in kept_taxids
         }
+        with open("kept_taxids.list", "w") as fout:
+            for k, _ in kept_taxid2nodes.items():
+                fout.write(f"{k}\n")
 
         print(f"💾 Writing fast cache to {pickle_file}")
         with open(pickle_file, "wb") as fout:
@@ -385,19 +385,9 @@ def _handle_lineage_command(args, taxdb_path: Path) -> int:
     try:
         print(f"🔍 Looking up lineage for TaxID {args.taxid}...")
 
-        # Choose database backend
-        if args.fast:
-            print("⚡ Using fast mode")
-            taxdb = TaxDb(taxdb_path, fast=True)
-        else:
-            taxdb = TaxSQLite(taxdb_path)
-
-        # Get and display lineage
-        taxon = Taxon(args.taxid, taxdb)
-        print(f"\n{taxon}")
-
-        if hasattr(taxdb, "close"):
-            taxdb.close()  # pyright: ignore[reportAttributeAccessIssue]
+        with TaxSQLite(taxdb_path) as taxdb:
+            taxon = Taxon(args.taxid, taxdb)
+            print(taxon.__repr__())
 
         return 0
 
