@@ -66,7 +66,10 @@ def update_version_in_file(file_path, version):
     """Update version in __init__.py."""
     content = file_path.read_text()
     updated = re.sub(
-        r'^__version__ = ".*"', f'__version__ = "{version}"', content, flags=re.MULTILINE
+        r'^__version__ = ".*"',
+        f'__version__ = "{version}"',
+        content,
+        flags=re.MULTILINE,
     )
     file_path.write_text(updated)
     print(f"✅ Updated version to {version} in {file_path}")
@@ -158,18 +161,18 @@ def main():
     # Create git tag
     create_git_tag(args.version)
 
-    # Build package
-    build_package()
-
-    # Upload if requested
-    if args.upload:
-        upload_to_pypi(test=args.test)
-    else:
-        print("📝 Package built. Use --upload to upload to PyPI")
-        if args.test:
-            print("💡 Use: python -m twine upload --repository testpypi dist/*")
-        else:
-            print("💡 Use: python -m twine upload dist/*")
+    # # Build package
+    # build_package()
+    #
+    # # Upload if requested
+    # if args.upload:
+    #     upload_to_pypi(test=args.test)
+    # else:
+    #     print("📝 Package built. Use --upload to upload to PyPI")
+    #     if args.test:
+    #         print("💡 Use: python -m twine upload --repository testpypi dist/*")
+    #     else:
+    #         print("💡 Use: python -m twine upload dist/*")
 
     print(f"🎉 Release {args.version} completed successfully!")
 
