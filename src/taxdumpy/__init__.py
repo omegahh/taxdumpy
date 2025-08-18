@@ -1,6 +1,6 @@
 """Taxdumpy: A Python package for parsing NCBI taxdump database and resolving taxonomy lineage."""
 
-__version__ = "1.1.4"
+__version__ = "1.1.5"
 
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxsqlite import TaxSQLite
