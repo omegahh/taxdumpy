@@ -21,6 +21,7 @@ from taxdumpy.basic import (
     ValidationError,
     DatabaseCorruptionError,
 )
+from taxdumpy import __version__
 
 
 # Configure logging for CLI
@@ -111,6 +112,12 @@ def _params_parser():
     )
 
     # Add global options
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"taxdumpy {__version__}",
+        help="Show program version and exit",
+    )
     parser.add_argument(
         "--verbose",
         "-v",

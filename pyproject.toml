@@ -52,3 +52,17 @@ path = "src/taxdumpy/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/taxdumpy"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.github",
+    "/venv",
+    "/dist",
+    "API_CONSISTENCY.md",
+    "CLAUDE.md",
+    "ERROR_HANDLING.md",
+    "TESTING.md",
+    "RELEASING.md",
+    "Makefile",
+    "tox.ini"
+]
