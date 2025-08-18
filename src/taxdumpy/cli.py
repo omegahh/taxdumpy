@@ -368,9 +368,9 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
         kept_taxid2nodes = {
             k: v for k, v in taxdb._taxid2nodes.items() if k in kept_taxids
         }
-        with open("kept_taxids.list", "w") as fout:
-            for k, _ in kept_taxid2nodes.items():
-                fout.write(f"{k}\n")
+        # with open("kept_taxids.list", "w") as fout:
+        #     for k, _ in kept_taxid2nodes.items():
+        #         fout.write(f"{k}\n")
 
         print(f"💾 Writing fast cache to {pickle_file}")
         with open(pickle_file, "wb") as fout:
