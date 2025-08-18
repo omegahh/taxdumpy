@@ -9,7 +9,7 @@ import pickle
 import logging
 from pathlib import Path
 from functools import cached_property
-from typing import Dict, List, Set, Union, Tuple
+from typing import Dict, List, Set, Tuple
 
 from rapidfuzz import process, fuzz
 
@@ -50,7 +50,7 @@ class TaxDb(TaxonomyDatabase):
         "names.dmp",
     ]
 
-    def __init__(self, taxdump_dir: Union[Path, str], fast: bool = False) -> None:
+    def __init__(self, taxdump_dir: Path | str, fast: bool = False) -> None:
         # Call parent constructor
         super().__init__(taxdump_dir)
 
@@ -80,7 +80,7 @@ class TaxDb(TaxonomyDatabase):
             raise
 
     @staticmethod
-    def _validate_init_params(taxdump_dir: Union[Path, str], fast: bool) -> None:
+    def _validate_init_params(taxdump_dir: Path | str, fast: bool) -> None:
         """Validate initialization parameters."""
         if not taxdump_dir:
             raise ValidationError("taxdump_dir", taxdump_dir, "non-empty path")
@@ -191,11 +191,11 @@ class TaxDb(TaxonomyDatabase):
 
     @cached_property
     def max_taxid_strlen(self) -> int:
-        return len(str(max(list(self._taxid2nodes.keys()))))
+        return len(str(max(self._taxid2nodes.keys())))
 
     @cached_property
     def max_rank_strlen(self) -> int:
-        return max(set([len(n.rank) for n in self._taxid2nodes.values()]))
+        return max(len(n.rank) for n in self._taxid2nodes.values())
 
     def _import_merged(self) -> Dict[int, int]:
         """Import merged taxid mappings with error handling."""
@@ -423,7 +423,7 @@ class TaxDb(TaxonomyDatabase):
         self._save_pickle(self._taxid2nodes, self._old2news, self.delnodes)
         print(f"Taxdump dumped!")
 
-    def get_node(self, taxid: Union[int, str]) -> Node:
+    def get_node(self, taxid: int | str) -> Node:
         """
         Get a taxonomy node by taxid.
 
@@ -467,7 +467,7 @@ class TaxDb(TaxonomyDatabase):
         return self._taxid2nodes[validated_taxid]
 
     @staticmethod
-    def _validate_taxid(taxid: Union[int, str]) -> int:
+    def _validate_taxid(taxid: int | str) -> int:
         """Validate and convert taxid to integer."""
         if taxid is None:
             raise ValidationError("taxid", taxid, "non-None value")
@@ -509,7 +509,7 @@ class TaxDb(TaxonomyDatabase):
 
     def _rapid_fuzz(
         self, query: str, limit: int = 10
-    ) -> List[Dict[str, Union[str, int]]]:
+    ) -> list[dict[str, str | int]]:
         """
         Perform fuzzy search on organism names.
 

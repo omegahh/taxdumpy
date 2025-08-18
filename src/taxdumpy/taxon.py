@@ -5,8 +5,9 @@ Created: 2025-06-30 19:51:00
 """
 
 from taxdumpy.ansi import b_str, r_str
+from taxdumpy.basic import Node
 from taxdumpy.taxdb import TaxDb
-from taxdumpy.taxsqlite import Node, TaxSQLite
+from taxdumpy.taxsqlite import TaxSQLite
 
 
 class Taxon:

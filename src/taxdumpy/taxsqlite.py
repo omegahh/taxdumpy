@@ -10,7 +10,7 @@ import sqlite3
 from pathlib import Path
 from rapidfuzz import process, fuzz
 from functools import cached_property
-from typing import Union, List, Dict
+from typing import List, Dict
 
 from taxdumpy.ansi import u_str, m_color
 from taxdumpy.basic import Node, TaxidError, ValidationError
@@ -211,7 +211,7 @@ class TaxSQLite(TaxonomyDatabase):
                     acr_names.setdefault(tid, []).append(name)
         return sci_names, eq_names, acr_names
 
-    def get_node(self, taxid: Union[int, str]) -> Node:
+    def get_node(self, taxid: int | str) -> Node:
         """
         Get a taxonomy node by taxid.
 
@@ -286,7 +286,7 @@ class TaxSQLite(TaxonomyDatabase):
         )
 
     @staticmethod
-    def _validate_taxid(taxid: Union[int, str]) -> int:
+    def _validate_taxid(taxid: int | str) -> int:
         """Validate and convert taxid to integer."""
         if taxid is None:
             raise ValidationError("taxid", taxid, "non-None value")
@@ -328,7 +328,7 @@ class TaxSQLite(TaxonomyDatabase):
 
     def _rapid_fuzz(
         self, query: str, limit: int = 10
-    ) -> List[Dict[str, Union[str, int]]]:
+    ) -> list[dict[str, str | int]]:
         """
         Perform fuzzy search on organism names.
 

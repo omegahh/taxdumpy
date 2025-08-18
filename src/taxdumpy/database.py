@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from functools import cached_property
-from typing import Dict, List, Set, Union
+from typing import Dict, List, Set
 from pathlib import Path
 
 from taxdumpy.basic import Node
@@ -16,7 +16,7 @@ class TaxonomyDatabase(ABC):
     (TaxDb, TaxSQLite, etc.) should implement to ensure API consistency.
     """
 
-    def __init__(self, taxdump_dir: Union[Path, str], **kwargs):
+    def __init__(self, taxdump_dir: Path | str, **kwargs):
         """
         Initialize the taxonomy database.
 
@@ -29,7 +29,7 @@ class TaxonomyDatabase(ABC):
         self._taxdump_dir = Path(taxdump_dir).resolve()
 
     @abstractmethod
-    def get_node(self, taxid: Union[int, str]) -> Node:
+    def get_node(self, taxid: int | str) -> Node:
         """
         Get a taxonomy node by taxid.
 
@@ -59,7 +59,7 @@ class TaxonomyDatabase(ABC):
     @abstractmethod
     def _rapid_fuzz(
         self, query: str, limit: int = 10
-    ) -> List[Dict[str, Union[str, int]]]:
+    ) -> list[dict[str, str | int]]:
         """
         Perform fuzzy search on organism names.
 
@@ -134,7 +134,7 @@ class TaxonomyDatabase(ABC):
 
 
 def create_database(
-    taxdump_dir: Union[Path, str], backend: str = "sqlite", **kwargs
+    taxdump_dir: Path | str, backend: str = "sqlite", **kwargs
 ) -> TaxonomyDatabase:
     """
     Factory function to create appropriate database backend.

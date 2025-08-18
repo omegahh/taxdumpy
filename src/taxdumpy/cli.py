@@ -6,7 +6,7 @@ import pickle
 import argparse
 import logging
 from pathlib import Path
-from typing import Optional, List
+from typing import List
 
 from tqdm import tqdm
 
@@ -20,6 +20,7 @@ from taxdumpy.basic import (
     TaxdumpFileError,
     ValidationError,
     DatabaseCorruptionError,
+    TaxdumpyMemoryError,
 )
 from taxdumpy import __version__
 
@@ -213,7 +214,7 @@ def _params_parser():
 
 
 # Main Entry Point
-def main(args: Optional[List[str]] = None) -> int:
+def main(args: list[str] | None = None) -> int:
     """
     Main entry point for the taxdumpy CLI.
 

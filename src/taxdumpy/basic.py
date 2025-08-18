@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union, Any
+from typing import Any
 
 
 @dataclass
@@ -32,7 +32,7 @@ class TaxdumpyError(Exception):
 class TaxDbError(TaxdumpyError):
     """Raised when there are issues with the taxonomy database."""
 
-    def __init__(self, message: str, details: Optional[str] = None):
+    def __init__(self, message: str, details: str | None = None):
         self.message = message
         self.details = details
         super().__init__(self._format_message())
@@ -49,7 +49,7 @@ class TaxidError(TaxdumpyError):
 
     def __init__(
         self,
-        taxid: Union[int, str],
+        taxid: int | str,
         message: str | None = None,
         suggestion: str | None = None,
     ):
@@ -118,7 +118,7 @@ class DatabaseCorruptionError(TaxDbError):
         super().__init__(message, f"{corruption_details}\nSolution: {solution}")
 
 
-class MemoryError(TaxdumpyError):
+class TaxdumpyMemoryError(TaxdumpyError):
     """Raised when memory-related issues occur."""
 
     def __init__(self, operation: str, suggestion: str | None = None):
