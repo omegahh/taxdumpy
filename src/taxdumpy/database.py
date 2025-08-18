@@ -57,9 +57,7 @@ class TaxonomyDatabase(ABC):
         pass
 
     @abstractmethod
-    def _rapid_fuzz(
-        self, query: str, limit: int = 10
-    ) -> list[dict[str, str | int]]:
+    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[dict[str, str | int]]:
         """
         Perform fuzzy search on organism names.
 
