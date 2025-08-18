@@ -2,10 +2,12 @@
 
 *A high-performance Python toolkit for parsing NCBI Taxonomy databases with lineage resolution and fuzzy search*
 
+[![CI](https://github.com/omegahh/taxdumpy/workflows/CI/badge.svg)](https://github.com/omegahh/taxdumpy/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/taxdumpy?color=green)](https://pypi.org/project/taxdumpy/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI version](https://img.shields.io/pypi/v/taxdumpy?color=green)](https://pypi.org/project/taxdumpy/)
 [![Development Status](https://img.shields.io/badge/Development%20Status-5%20Production/Stable-brightgreen)](https://pypi.org/project/taxdumpy/)
+[![codecov](https://codecov.io/gh/omegahh/taxdumpy/branch/main/graph/badge.svg)](https://codecov.io/gh/omegahh/taxdumpy)
 
 ## Features
 
@@ -88,13 +90,20 @@ flu_results = taxdb._rapid_fuzz("Influenza A", limit=10)
 
 ## Command Line Interface
 
+### Check Version
+```bash
+# Display current version
+taxdumpy --version
+# Output: taxdumpy 0.1.1
+```
+
 ### Cache Database
 ```bash
 # Cache full NCBI taxonomy database  
 taxdumpy cache -d /path/to/taxdump
 
 # Create fast cache with specific organisms
-taxdumpy fast-cache -d /path/to/taxdump -f important_taxids.txt
+taxdumpy cache -d /path/to/taxdump -f important_taxids.txt
 ```
 
 ### Search Operations
@@ -102,6 +111,9 @@ taxdumpy fast-cache -d /path/to/taxdump -f important_taxids.txt
 # Search for organisms (with fuzzy matching)
 taxdumpy search --fast "Escherichia coli"
 taxdumpy search "Homo sapiens"
+
+# Limit search results
+taxdumpy search --limit 5 "Influenza A"
 
 # Search with custom database path
 taxdumpy search -d /custom/path "Influenza A"
@@ -113,8 +125,8 @@ taxdumpy search -d /custom/path "Influenza A"
 taxdumpy lineage --fast 511145  # E. coli K-12 MG1655
 taxdumpy lineage 9606           # Homo sapiens
 
-# Multiple TaxIDs
-taxdumpy lineage 9606 511145 7227
+# With custom database path
+taxdumpy lineage -d /custom/path 9606
 ```
 
 ## Database Setup
@@ -138,7 +150,7 @@ taxdumpy cache -d ~/.taxonkit
 
 # Or create fast cache with specific organisms
 echo -e "9606\n511145\n7227" > important_species.txt
-taxdumpy fast-cache -d ~/.taxonkit -f important_species.txt
+taxdumpy cache -d ~/.taxonkit -f important_species.txt
 ```
 
 ### 3. Set Environment Variable (Optional)
@@ -234,22 +246,53 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 - **Data**: NCBI taxdump files (~300MB compressed, ~2GB extracted)
 - **Memory**: ~500MB RAM for full database (less with SQLite backend)
 
-## Contributing
+## Development & Contributing
 
-Contributions welcome! Please:
-
-1. **Code Style**: Format with `black` before submitting
-2. **Type Hints**: Include comprehensive type annotations
-3. **Testing**: Add tests for new features  
-4. **Documentation**: Update README and docstrings
-
+### Development Setup
 ```bash
-# Development setup
+# Clone repository
 git clone https://github.com/omegahh/taxdumpy.git
 cd taxdumpy
+
+# Install in development mode
 pip install -e .[dev]
-black src/
+
+# Run tests
+pytest
+
+# Format code
+black src/ tests/
+
+# Check types and linting
+make lint
 ```
+
+### CI/CD Pipeline
+
+The project uses GitHub Actions for automated testing and deployment:
+
+- **CI Workflow**: Tests across Python 3.10-3.13, code formatting, and coverage
+- **PyPI Publishing**: Automatic releases on version tags (`v*`)
+- **Test PyPI**: Pre-release testing with tags like `v1.2.3-beta.1`
+
+### Release Process
+
+```bash
+# Automated release (recommended)
+python scripts/release.py --version 1.2.3 --upload
+
+# Manual tagging triggers GitHub Actions
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+### Contributing Guidelines
+
+1. **Code Style**: Use `black` for formatting
+2. **Type Hints**: Include comprehensive type annotations  
+3. **Testing**: Maintain >80% test coverage
+4. **Documentation**: Update README and docstrings
+5. **Commits**: Use conventional commit messages
 
 ## License
 
