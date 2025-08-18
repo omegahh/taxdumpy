@@ -51,7 +51,7 @@ def check_working_directory():
 def run_tests():
     """Run the test suite."""
     print("🧪 Running tests...")
-    run_command("python -m pytest tests/ -v")
+    run_command("python -m pytest tests/")
     print("✅ All tests passed")
 
 
