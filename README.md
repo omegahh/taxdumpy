@@ -1,6 +1,6 @@
 # Taxdumpy 🧬
 
-*A high-performance Python toolkit for parsing NCBI Taxonomy databases with lineage resolution and fuzzy search*
+_A high-performance Python toolkit for parsing NCBI Taxonomy databases with lineage resolution and fuzzy search_
 
 [![CI](https://github.com/omegahh/taxdumpy/workflows/CI/badge.svg)](https://github.com/omegahh/taxdumpy/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/taxdumpy?color=green)](https://pypi.org/project/taxdumpy/)
@@ -11,24 +11,24 @@
 
 ## Features
 
-- **🚀 Blazing Fast Parsing**  
+- **🚀 Blazing Fast Parsing**
   Optimized loading of NCBI taxdump files (`nodes.dmp`, `names.dmp`, etc.) with pickle caching for 3x speedup
 
-- **🔬 Comprehensive Taxon Operations**  
+- **🔬 Comprehensive Taxon Operations**
   - TaxID validation and complete lineage tracing
   - Scientific name resolution and rank-based filtering
   - Handle merged/deleted nodes and legacy taxonomies
   - Access to division information and metadata
 
-- **🔍 Fuzzy Search**  
+- **🔍 Fuzzy Search**
   Rapid approximate name matching using `rapidfuzz` - find organisms even with typos
 
-- **⚡ High Performance**  
-  - Memory-efficient data structures for large taxonomies  
+- **⚡ High Performance**
+  - Memory-efficient data structures for large taxonomies
   - Dual backend support: in-memory (TaxDb) and SQLite (TaxSQLite)
   - Lazy loading and optimized caching strategies
 
-- **🖥️ Command Line Interface**  
+- **🖥️ Command Line Interface**
   Ready-to-use CLI for caching, searching, and lineage resolution
 
 ## Installation
@@ -38,6 +38,7 @@ pip install taxdumpy
 ```
 
 **Development Installation:**
+
 ```bash
 git clone https://github.com/omegahh/taxdumpy.git
 cd taxdumpy
@@ -45,6 +46,7 @@ pip install -e .
 ```
 
 **With Development Dependencies:**
+
 ```bash
 pip install -e .[dev]
 ```
@@ -67,7 +69,7 @@ ecoli = Taxon(511145, taxdb)  # E. coli K-12
 print(human.name_lineage)
 # ['Homo sapiens', 'Homo', 'Hominidae', 'Primates', ..., 'cellular organisms']
 
-print(human.rank_lineage) 
+print(human.rank_lineage)
 # ['species', 'genus', 'family', 'order', ..., 'superkingdom']
 
 # Check taxonomic properties
@@ -84,13 +86,14 @@ results = taxdb._rapid_fuzz("Escherichia coli", limit=5)
 for match in results:
     print(f"{match['name']} (TaxID: {match['taxid']}, Score: {match['score']})")
 
-# Search influenza strains  
+# Search influenza strains
 flu_results = taxdb._rapid_fuzz("Influenza A", limit=10)
 ```
 
 ## Command Line Interface
 
 ### Check Version
+
 ```bash
 # Display current version
 taxdumpy --version
@@ -98,8 +101,9 @@ taxdumpy --version
 ```
 
 ### Cache Database
+
 ```bash
-# Cache full NCBI taxonomy database  
+# Cache full NCBI taxonomy database
 taxdumpy cache -d /path/to/taxdump
 
 # Create fast cache with specific organisms
@@ -107,6 +111,7 @@ taxdumpy cache -d /path/to/taxdump -f important_taxids.txt
 ```
 
 ### Search Operations
+
 ```bash
 # Search for organisms (with fuzzy matching)
 taxdumpy search --fast "Escherichia coli"
@@ -120,6 +125,7 @@ taxdumpy search -d /custom/path "Influenza A"
 ```
 
 ### Lineage Tracing
+
 ```bash
 # Get complete lineage for TaxID
 taxdumpy lineage --fast 511145  # E. coli K-12 MG1655
@@ -132,11 +138,12 @@ taxdumpy lineage -d /custom/path 9606
 ## Database Setup
 
 ### 1. Download NCBI Taxonomy Data
+
 ```bash
 # Create directory for taxonomy data
 mkdir -p ~/.taxonkit
 
-# Download latest taxdump 
+# Download latest taxdump
 wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz -P ~/.taxonkit
 
 # Extract files
@@ -144,6 +151,7 @@ tar -xzf ~/.taxonkit/taxdump.tar.gz -C ~/.taxonkit
 ```
 
 ### 2. Initialize Database
+
 ```bash
 # Create full cache (recommended for regular use)
 taxdumpy cache -d ~/.taxonkit
@@ -154,6 +162,7 @@ taxdumpy cache -d ~/.taxonkit -f important_species.txt
 ```
 
 ### 3. Set Environment Variable (Optional)
+
 ```bash
 export TAXDB_PATH=~/.taxonkit
 ```
@@ -161,6 +170,7 @@ export TAXDB_PATH=~/.taxonkit
 ## Advanced Usage
 
 ### SQLite Backend
+
 ```python
 from taxdumpy import TaxSQLite
 
@@ -174,6 +184,7 @@ print(taxon.name_lineage)
 ```
 
 ### Batch Processing
+
 ```python
 from taxdumpy import TaxDb, Taxon
 
@@ -187,6 +198,7 @@ for taxid in taxids:
 ```
 
 ### Custom Utilities
+
 ```python
 from taxdumpy import upper_rank_id
 
@@ -200,22 +212,25 @@ print(f"Human kingdom TaxID: {kingdom_id}")  # 33208 (Metazoa)
 ### Core Classes
 
 **TaxDb**: In-memory dictionary-based database
+
 ```python
 TaxDb(taxdump_dir: str, fast: bool = False)
 ```
 
-**TaxSQLite**: SQLite-based persistent database  
+**TaxSQLite**: SQLite-based persistent database
+
 ```python
 TaxSQLite(db_path: str)
 ```
 
 **Taxon**: Taxonomic unit with lineage resolution
+
 ```python
 Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 
 # Properties
 .name: str              # Scientific name
-.rank: str              # Taxonomic rank  
+.rank: str              # Taxonomic rank
 .division: str          # NCBI division
 .lineage: List[Node]    # Complete lineage
 .name_lineage: List[str] # Names only
@@ -226,7 +241,7 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 ## Performance Tips
 
 - **Use Fast Mode**: `TaxDb(path, fast=True)` provides ~3x speedup with pre-cached data
-- **Reuse Instances**: Create one `TaxDb` instance and reuse for multiple operations  
+- **Reuse Instances**: Create one `TaxDb` instance and reuse for multiple operations
 - **Environment Variables**: Set `TAXDB_PATH` to avoid repeating database paths
 - **Choose Backend**: Use `TaxSQLite` for large datasets with limited memory
 - **Batch Operations**: Process multiple TaxIDs in batches rather than individual calls
@@ -234,14 +249,14 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 ## Use Cases
 
 - **🧬 Metagenomics**: Classify and annotate environmental sequences
-- **🔬 Phylogenetics**: Build taxonomic trees and study evolutionary relationships  
+- **🔬 Phylogenetics**: Build taxonomic trees and study evolutionary relationships
 - **📊 Bioinformatics**: Pipeline integration for taxonomy-aware analysis
 - **🔍 Data Validation**: Verify and standardize organism names in datasets
 - **📈 Research**: Large-scale taxonomic studies and biodiversity analysis
 
 ## Requirements
 
-- **Python**: 3.10+ 
+- **Python**: 3.10+
 - **Dependencies**: `rapidfuzz`, `tqdm`
 - **Data**: NCBI taxdump files (~300MB compressed, ~2GB extracted)
 - **Memory**: ~500MB RAM for full database (less with SQLite backend)
@@ -249,6 +264,7 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 ## Development & Contributing
 
 ### Development Setup
+
 ```bash
 # Clone repository
 git clone https://github.com/omegahh/taxdumpy.git
@@ -289,7 +305,7 @@ git push origin v1.2.3
 ### Contributing Guidelines
 
 1. **Code Style**: Use `black` for formatting
-2. **Type Hints**: Include comprehensive type annotations  
+2. **Type Hints**: Include comprehensive type annotations
 3. **Testing**: Maintain >80% test coverage
 4. **Documentation**: Update README and docstrings
 5. **Commits**: Use conventional commit messages
