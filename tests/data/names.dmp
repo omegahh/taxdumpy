@@ -1,0 +1,358 @@
+1	|	all	|		|	synonym	|
+1	|	root	|		|	scientific name	|
+2	|	Bacteria	|	Bacteria <bacteria>	|	scientific name	|
+2	|	bacteria	|		|	blast name	|
+2	|	"Bacteria" Cavalier-Smith 1987	|		|	authority	|
+2	|	Bacteria (ex Cavalier-Smith 1987)	|		|	synonym	|
+2	|	Bacteria Woese et al. 2024	|		|	synonym	|
+2	|	"Bacteriobiota" Luketa 2012	|		|	authority	|
+2	|	Bacteriobiota	|		|	synonym	|
+2	|	eubacteria	|		|	genbank common name	|
+2	|	Monera	|	Monera <bacteria>	|	in-part	|
+2	|	Procaryotae	|	Procaryotae <bacteria>	|	in-part	|
+2	|	Prokaryotae	|	Prokaryotae <bacteria>	|	in-part	|
+2	|	Prokaryota	|	Prokaryota <bacteria>	|	in-part	|
+2	|	prokaryote	|	prokaryote <bacteria>	|	in-part	|
+2	|	prokaryotes	|	prokaryotes <bacteria>	|	in-part	|
+1760	|	Actinobacteria Stackebrandt et al. 1997	|		|	synonym	|
+1760	|	Actinobacteridae	|		|	includes	|
+1760	|	Actinobacteridae Stackebrandt et al. 1997 emend. Zhi et al. 2009	|		|	authority	|
+1760	|	Actinomycetes Krasil'nikov 1949 (Approved Lists 1980)	|		|	authority	|
+1760	|	Actinomycetes	|		|	scientific name	|
+1760	|	Actinomycetia Salam et al. 2020	|		|	authority	|
+1760	|	Actinomycetia	|		|	synonym	|
+1760	|	high G+C Gram-positive bacteria	|	high G+C Gram-positive bacteria <blast name>	|	blast name	|
+1760	|	high G+C Gram-positive bacteria	|	high G+C Gram-positive bacteria <genbank common name>	|	genbank common name	|
+1839	|	Nocardioides Prauser 1976	|		|	authority	|
+1839	|	Nocardioides	|		|	scientific name	|
+1883	|	Actinopycnidium Krasil'nikov 1962	|		|	synonym	|
+1883	|	Actinosporangium Krasil'nikov and Yuan 1961	|		|	synonym	|
+1883	|	Chainia	|		|	synonym	|
+1883	|	Chainia Thirumalachar 1955	|		|	authority	|
+1883	|	Elytrosporangium Falcao de Morais et al. 1966	|		|	synonym	|
+1883	|	Kitasatoa Matsumae and Hata 1968 (Approved Lists 1980)	|		|	synonym	|
+1883	|	Microellobosporia Cross et al. 1963 (Approved Lists 1980)	|		|	authority	|
+1883	|	Microellobosporia	|		|	synonym	|
+1883	|	"Microstreptospora" Yan et al.	|		|	synonym	|
+1883	|	Streptomyces	|		|	scientific name	|
+1883	|	Streptomyces Waksman and Henrici 1943 (Approved Lists 1980)	|		|	authority	|
+1883	|	Streptomyces Waksman and Henrici 1943 (Approved Lists 1980) emend. Wellington et al. 1992	|		|	authority	|
+1883	|	Streptomyces Waksman and Henrici 1943 (Approved Lists 1980) emend. Witt and Stackebrandt 1991	|		|	authority	|
+1883	|	Streptoverticillium Baldacci 1958	|		|	synonym	|
+2062	|	Actinoplanaceae	|	Actinoplanaceae <Streptomycetaceae>	|	in-part	|
+2062	|	Actinoplanaceae Couch 1955	|	Actinoplanaceae Couch 1955 <Streptomycetaceae>	|	authority	|
+2062	|	Streptomycetaceae	|		|	scientific name	|
+2062	|	Streptomycetaceae Waksman and Henrici 1943 (Approved Lists 1980)	|		|	authority	|
+2062	|	Streptomycetaceae Waksman and Henrici 1943 (Approved Lists 1980) emend. Huang et al. 2017	|		|	authority	|
+2062	|	Streptomycetaceae Waksman and Henrici 1943 (Approved Lists 1980) emend. Kim et al. 2003	|		|	authority	|
+2062	|	Streptomycetaceae Waksman and Henrici 1943 (Approved Lists 1980) emend. Nouioui et al. 2018	|		|	authority	|
+2062	|	Streptomycetaceae Waksman and Henrici 1943 (Approved Lists 1980) emend. Rainey et al. 1997	|		|	authority	|
+2062	|	Streptomycetaceae Waksman and Henrici 1943 (Approved Lists 1980) emend. Swiecimska et al. 2023	|		|	authority	|
+2062	|	Streptomycetaceae Waksman and Henrici 1943 (Approved Lists 1980) emend. Zhi et al. 2009	|		|	authority	|
+2157	|	archaea	|		|	blast name	|
+2157	|	Archaea	|		|	scientific name	|
+2157	|	"Archaea" Woese et al. 1990	|		|	authority	|
+2157	|	Archaea Woese et al. 2024	|		|	authority	|
+2157	|	"Archaebacteria" (sic) Woese and Fox 1977	|		|	authority	|
+2157	|	Archaebacteria	|		|	synonym	|
+2157	|	"Archaebiota" Luketa 2012	|		|	authority	|
+2157	|	Archaebiota	|		|	synonym	|
+2157	|	Mendosicutes	|		|	synonym	|
+2157	|	Metabacteria	|		|	synonym	|
+2157	|	Monera	|	Monera <archaea>	|	in-part	|
+2157	|	Procaryotae	|	Procaryotae <archaea>	|	in-part	|
+2157	|	Prokaryotae	|	Prokaryotae <archaea>	|	in-part	|
+2157	|	Prokaryota	|	Prokaryota <archaea>	|	in-part	|
+2157	|	prokaryote	|	prokaryote <archaea>	|	in-part	|
+2157	|	prokaryotes	|	prokaryotes <archaea>	|	in-part	|
+2158	|	Methanobacteriales Balch and Wolfe 1981	|		|	authority	|
+2158	|	Methanobacteriales	|		|	scientific name	|
+2159	|	Methanobacteriaceae Barker 1956 (Approved Lists 1980)	|		|	authority	|
+2159	|	Methanobacteriaceae	|		|	scientific name	|
+2160	|	Methanobacterium Kluyver and van Niel 1936	|		|	authority	|
+2160	|	Methanobacterium	|		|	scientific name	|
+2161	|	ATCC 33272	|	ATCC 33272 <type strain>	|	type material	|
+2161	|	culture-collection:VKM:B:1629	|	culture-collection:VKM:B:1629 <type strain>	|	type material	|
+2161	|	DSM 863	|	DSM 863 <type strain>	|	type material	|
+2161	|	Methanobacterium bryantii Balch and Wolfe 1981 emend. Judicial Commission 1992	|		|	authority	|
+2161	|	Methanobacterium bryantii	|		|	scientific name	|
+2161	|	M.o.H.	|	M.o.H. <type strain>	|	type material	|
+2161	|	OCM 110	|	OCM 110 <type strain>	|	type material	|
+2161	|	strain M.o.H.	|	strain M.o.H. <type strain>	|	type material	|
+2161	|	strain MoH	|	strain MoH <type strain>	|	type material	|
+2161	|	VKM B-1629	|	VKM B-1629 <type strain>	|	type material	|
+2759	|	Eucarya	|		|	synonym	|
+2759	|	Eucaryotae	|		|	synonym	|
+2759	|	eucaryotes	|		|	genbank common name	|
+2759	|	Eukarya	|		|	synonym	|
+2759	|	Eukaryotae	|		|	synonym	|
+2759	|	Eukaryota	|		|	scientific name	|
+2759	|	eukaryotes	|	eukaryotes <blast name>	|	blast name	|
+2759	|	eukaryotes	|	eukaryotes <common name>	|	common name	|
+4762	|	oomycetes	|		|	blast name	|
+4762	|	Oomycetes G. Winter, 1880	|		|	authority	|
+4762	|	Oomycetes	|		|	synonym	|
+4762	|	Oomycota Arx, 1967	|		|	authority	|
+4762	|	Oomycota	|		|	scientific name	|
+4776	|	Peronosporales Bek., 1863	|		|	authority	|
+4776	|	Peronosporales	|		|	scientific name	|
+4777	|	downy mildews	|		|	blast name	|
+4777	|	Peronosporaceae de Bary, 1863	|		|	authority	|
+4777	|	Peronosporaceae	|		|	scientific name	|
+4777	|	Sclerosporaceae	|		|	includes	|
+4780	|	Plasmopara	|		|	scientific name	|
+4781	|	Peronospora halstedii Farl., 1883	|		|	authority	|
+4781	|	Peronospora halstedii	|		|	synonym	|
+4781	|	Plasmopara halstedii (Farl.) Berl. & De Toni, 1888	|		|	authority	|
+4781	|	Plasmopara halstedii	|		|	scientific name	|
+6040	|	Parazoa	|		|	synonym	|
+6040	|	Porifera	|		|	scientific name	|
+6040	|	sponges	|	sponges <blast name>	|	blast name	|
+6040	|	sponges	|	sponges <genbank common name>	|	genbank common name	|
+6042	|	Ceractinomorpha	|		|	synonym	|
+6042	|	Demospongiae	|		|	scientific name	|
+6042	|	Monaxonida	|		|	synonym	|
+6042	|	Tetractinomorpha	|		|	synonym	|
+6042	|	Tetraxonida	|		|	synonym	|
+6060	|	Halichondriidae	|		|	scientific name	|
+6060	|	Hymeniacidonidae	|		|	synonym	|
+6061	|	Halichondria	|		|	scientific name	|
+6063	|	Demospongiae sp. USNM IZ 1517732	|		|	includes	|
+6063	|	Halichondria (Halichondria) panicea	|		|	synonym	|
+6063	|	Halichondria panicea (Pallas, 1766)	|		|	authority	|
+6063	|	Halichondria panicea	|		|	scientific name	|
+6063	|	Halichondria sp. USNM IZ 1517735	|		|	includes	|
+6063	|	Spongia panicea Pallas, 1766	|		|	authority	|
+6063	|	Spongia panicea	|		|	synonym	|
+6072	|	Eumetazoa	|		|	scientific name	|
+7711	|	Chordata	|		|	scientific name	|
+7711	|	chordates	|	chordates <blast name>	|	blast name	|
+7711	|	chordates	|	chordates <genbank common name>	|	genbank common name	|
+7742	|	Vertebrata Cuvier, 1812	|		|	authority	|
+7742	|	Vertebrata	|	Vertebrata <vertebrates>	|	scientific name	|
+7742	|	vertebrates	|	vertebrates <blast name>	|	blast name	|
+7742	|	vertebrates	|	vertebrates <genbank common name>	|	genbank common name	|
+7776	|	Gnathostomata	|	Gnathostomata <vertebrates>	|	scientific name	|
+7776	|	jawed vertebrates	|		|	genbank common name	|
+7777	|	cartilaginous fishes	|	cartilaginous fishes <blast name>	|	blast name	|
+7777	|	cartilaginous fishes	|	cartilaginous fishes <genbank common name>	|	genbank common name	|
+7777	|	Chondrichthyes	|		|	scientific name	|
+7777	|	fishes	|	fishes <cartilaginous fishes>	|	common name	|
+7777	|	fish	|	fish <cartilaginous fishes>	|	common name	|
+7863	|	Holocephali	|		|	scientific name	|
+7864	|	chimaeras	|	chimaeras <blast name>	|	blast name	|
+7864	|	chimaeras	|	chimaeras <genbank common name>	|	genbank common name	|
+7864	|	Chimaeriformes	|		|	scientific name	|
+7865	|	Callorhinchidae	|		|	scientific name	|
+7865	|	elephantfishes	|	elephantfishes <chimaeras>	|	common name	|
+7865	|	plownose chimaeras	|		|	genbank common name	|
+7866	|	Callorhinchus	|		|	scientific name	|
+7868	|	Australian ghost shark	|		|	common name	|
+7868	|	Callorhinchus milii Bory de Saint-Vincent, 1823	|		|	authority	|
+7868	|	Callorhinchus milii	|		|	scientific name	|
+7868	|	elephant fish	|		|	common name	|
+7868	|	elephant shark	|		|	genbank common name	|
+7868	|	ghost shark	|		|	common name	|
+7868	|	makorepe	|		|	common name	|
+7868	|	plownose chimaera	|		|	common name	|
+7868	|	reperepe	|		|	common name	|
+8287	|	Sarcopterygii	|		|	scientific name	|
+9347	|	eutherian mammals	|		|	common name	|
+9347	|	Eutheria	|		|	scientific name	|
+9347	|	Placentalia	|		|	synonym	|
+9347	|	placental mammals	|		|	common name	|
+9347	|	placentals	|	placentals <blast name>	|	blast name	|
+9347	|	placentals	|	placentals <genbank common name>	|	genbank common name	|
+9443	|	Primata	|		|	synonym	|
+9443	|	primate	|		|	equivalent name	|
+9443	|	primates	|		|	blast name	|
+9443	|	Primates Linnaeus, 1758	|		|	authority	|
+9443	|	Primates	|		|	scientific name	|
+9526	|	Catarrhini	|		|	scientific name	|
+9604	|	great apes	|		|	genbank common name	|
+9604	|	Hominidae Gray, 1825	|		|	authority	|
+9604	|	Hominidae	|		|	scientific name	|
+9604	|	Pongidae	|		|	synonym	|
+9605	|	Homo Linnaeus, 1758	|		|	authority	|
+9605	|	Homo	|		|	scientific name	|
+9605	|	humans	|		|	common name	|
+9606	|	Homo sapiens Linnaeus, 1758	|		|	authority	|
+9606	|	Homo sapiens	|		|	scientific name	|
+9606	|	human	|		|	genbank common name	|
+10239	|	Vira	|		|	synonym	|
+10239	|	Viridae	|		|	synonym	|
+10239	|	viruses	|		|	blast name	|
+10239	|	Viruses	|		|	scientific name	|
+11050	|	Flaviviridae	|		|	scientific name	|
+11050	|	Flavivirus (arbovirus group B)	|		|	equivalent name	|
+28890	|	Euryarchaeota Garrity and Holt 2002	|		|	authority	|
+28890	|	Euryarchaeota	|		|	synonym	|
+28890	|	"Euryarchaeota" Woese et al. 1990	|		|	authority	|
+28890	|	euryarchaeotes	|		|	blast name	|
+28890	|	"Methanobacteraeota" Oren et al. 2015	|		|	authority	|
+28890	|	Methanobacteraeota	|		|	synonym	|
+28890	|	Methanobacteriota Garrity and Holt 2023	|		|	authority	|
+28890	|	Methanobacteriota	|		|	scientific name	|
+28890	|	"Methanobacteriota" Whitman et al. 2018	|		|	authority	|
+29299	|	ATCC 51889	|	ATCC 51889 <type strain>	|	type material	|
+29299	|	CIP 104157	|	CIP 104157 <type strain>	|	type material	|
+29299	|	DSM 11054	|	DSM 11054 <type strain>	|	type material	|
+29299	|	JCM 9626	|	JCM 9626 <type strain>	|	type material	|
+29299	|	LMG 16210	|	LMG 16210 <type strain>	|	type material	|
+29299	|	LMG:16210	|	LMG:16210 <type strain>	|	type material	|
+29299	|	NCIMB 12834	|	NCIMB 12834 <type strain>	|	type material	|
+29299	|	Nocardioides plantarum Collins et al. 1994	|		|	authority	|
+29299	|	Nocardioides plantarum	|		|	scientific name	|
+29299	|	strain Grainger J70	|	strain Grainger J70 <type strain>	|	type material	|
+29299	|	VKM Ac-1998	|	VKM Ac-1998 <type strain>	|	type material	|
+32523	|	Tetrapoda	|		|	scientific name	|
+32523	|	tetrapods	|		|	genbank common name	|
+32524	|	Amniota	|		|	scientific name	|
+32524	|	amniotes	|		|	genbank common name	|
+32525	|	Theria Parker & Haswell, 1897	|		|	authority	|
+32525	|	Theria	|	Theria <mammals>	|	scientific name	|
+33154	|	Fungi/Metazoa group	|		|	synonym	|
+33154	|	Opisthokonta Cavalier-Smith 1987	|		|	authority	|
+33154	|	Opisthokonta	|		|	scientific name	|
+33154	|	opisthokonts	|		|	synonym	|
+33208	|	Animalia	|		|	synonym	|
+33208	|	animals	|		|	blast name	|
+33208	|	metazoans	|		|	genbank common name	|
+33208	|	Metazoa	|		|	scientific name	|
+33208	|	multicellular animals	|		|	common name	|
+33213	|	Bilateria	|		|	scientific name	|
+33511	|	deuterostomes	|		|	common name	|
+33511	|	Deuterostomia	|		|	scientific name	|
+33634	|	Chromophyta	|	Chromophyta <eukaryotes>	|	in-part	|
+33634	|	Heterokonta	|		|	synonym	|
+33634	|	heterokonts	|		|	genbank common name	|
+33634	|	Stramenopiles Patterson 1989, emend. Adl et al. 2005	|		|	authority	|
+33634	|	Stramenopiles	|		|	scientific name	|
+33634	|	Straminipila	|		|	synonym	|
+40674	|	Mammalia	|		|	scientific name	|
+40674	|	mammals	|	mammals <blast name>	|	blast name	|
+40674	|	mammals	|	mammals <genbank common name>	|	genbank common name	|
+63221	|	Feldhofer 1	|	Feldhofer 1 <holotype>	|	type material	|
+63221	|	Homo neanderthalensis	|		|	synonym	|
+63221	|	Homo sapiens neanderthalensis King, 1864	|		|	authority	|
+63221	|	Homo sapiens neanderthalensis	|		|	scientific name	|
+63221	|	Neandertal	|		|	genbank common name	|
+63221	|	Neandertal man	|		|	common name	|
+63221	|	Neanderthal 1	|	Neanderthal 1 <holotype>	|	type material	|
+63221	|	Neanderthal	|		|	common name	|
+63221	|	Neanderthal man	|		|	common name	|
+64280	|	APOIV	|		|	acronym	|
+64280	|	Apoi virus	|		|	scientific name	|
+85009	|	Propionibacteriales Patrick and McDowell 2015 emend. Nouioui et al. 2018	|		|	authority	|
+85009	|	Propionibacteriales	|		|	scientific name	|
+85009	|	Propionibacterineae Rainey et al. 1997 emend. Zhi et al. 2009	|		|	authority	|
+85009	|	Propionibacterineae	|		|	synonym	|
+85009	|	Propionicibacterineae	|		|	equivalent name	|
+85011	|	Kitasatosporales Kampfer 2022	|		|	authority	|
+85011	|	Kitasatosporales	|		|	scientific name	|
+85011	|	"Streptomycetales" (Rainey et al. 1997) Kampfer 2012	|		|	authority	|
+85011	|	Streptomycetales	|		|	synonym	|
+85011	|	"Streptomycetes" Goodfellow and Williams 1983	|		|	authority	|
+85011	|	Streptomycetes	|		|	synonym	|
+85011	|	Streptomycetineae corrig. Rainey et al. 1997	|		|	authority	|
+85011	|	Streptomycineae Rainey et al. 1997 emend. Zhi et al. 2009	|		|	authority	|
+85011	|	Streptomycineae Rainey et al. 1997	|		|	synonym	|
+85011	|	Streptomycineae	|		|	synonym	|
+85015	|	Nocardioidaceae Nesterenko et al. 1990 emend. Nouioui et al. 2018	|		|	authority	|
+85015	|	Nocardioidaceae Nesterenko et al. 1990 emend. Rainey et al. 1997	|		|	authority	|
+85015	|	Nocardioidaceae Nesterenko et al. 1990 emend. Zhi et al. 2009	|		|	authority	|
+85015	|	Nocardioidaceae	|		|	scientific name	|
+85015	|	Nocardioides group	|		|	synonym	|
+89593	|	Craniata	|	Craniata <chordates>	|	scientific name	|
+117570	|	Teleostomi	|		|	scientific name	|
+117571	|	bony vertebrates	|		|	genbank common name	|
+117571	|	Euteleostomi	|		|	scientific name	|
+131567	|	biota	|		|	synonym	|
+131567	|	cellular organisms	|		|	scientific name	|
+183925	|	Archaeobacteria Murray 1988	|		|	authority	|
+183925	|	Archaeobacteria	|		|	synonym	|
+183925	|	Methanobacteria Boone 2002	|		|	authority	|
+183925	|	Methanobacteria	|		|	scientific name	|
+201174	|	Actinobacteraeota Oren et al. 2015	|		|	authority	|
+201174	|	Actinobacteraeota	|		|	synonym	|
+201174	|	actinobacteria	|		|	blast name	|
+201174	|	"Actinobacteria" (ex Margulis 1974) Cavalier-Smith 2020	|		|	authority	|
+201174	|	"Actinobacteria" Goodfellow 2012	|		|	authority	|
+201174	|	Actinobacteria	|		|	synonym	|
+201174	|	"Actinobacteriota" Panda et al. 2022	|		|	authority	|
+201174	|	Actinobacteriota	|		|	synonym	|
+201174	|	"Actinobacteriota" Whitman et al. 2018	|		|	authority	|
+201174	|	Actinomycetota corrig. Goodfellow 2021	|		|	authority	|
+201174	|	Actinomycetota	|		|	scientific name	|
+207598	|	Homininae	|		|	scientific name	|
+207598	|	Homo/Pan/Gorilla group	|		|	synonym	|
+314146	|	Euarchontoglires	|		|	scientific name	|
+314293	|	Anthropoidea	|		|	synonym	|
+314293	|	Simiiformes	|		|	scientific name	|
+314295	|	ape	|	ape <primates>	|	common name	|
+314295	|	apes	|		|	genbank common name	|
+314295	|	Hominoidea	|		|	scientific name	|
+376913	|	Haplorrhini	|		|	scientific name	|
+741158	|	Denisova hominin	|		|	genbank common name	|
+741158	|	Denisovan	|		|	common name	|
+741158	|	Denisovans	|		|	common name	|
+741158	|	Homo sapiens ssp. 'Denisova'	|		|	equivalent name	|
+741158	|	Homo sapiens ssp. Denisova	|		|	equivalent name	|
+741158	|	Homo sapiens subsp. 'Denisova'	|		|	scientific name	|
+741158	|	Homo sp. Altai	|		|	synonym	|
+1338369	|	Dipnotetrapodomorpha	|		|	scientific name	|
+1437010	|	Boreoeutheria	|		|	scientific name	|
+1437010	|	Boreotheria	|		|	synonym	|
+1779146	|	Desmophorida	|		|	synonym	|
+1779146	|	Heteroscleromorpha	|		|	scientific name	|
+1779146	|	Lithistida	|		|	synonym	|
+1779162	|	Suberitida	|		|	scientific name	|
+1783272	|	Bacillati (Gibbons and Murray 1978) Oren and Goker 2024	|		|	authority	|
+1783272	|	Bacillati	|		|	scientific name	|
+1783272	|	Firmacutes Gibbons and Murray 1978 (Approved Lists 1980)	|		|	authority	|
+1783272	|	Firmacutes	|		|	synonym	|
+1783272	|	"Firmicuteota" Panda et al. 2022	|		|	authority	|
+1783272	|	Firmicuteota	|		|	synonym	|
+1783272	|	Firmicutes corrig. Gibbons and Murray 1978 (Approved Lists 1980)	|		|	synonym	|
+1783272	|	Firmicutes	|		|	synonym	|
+1783272	|	"Terrabacteria" Battistuzzi et al. 2004	|		|	authority	|
+1783272	|	Terrabacteria group	|		|	common name	|
+1783272	|	Terrabacteria	|		|	synonym	|
+1783272	|	"Terrabacterida" Luketa 2012	|		|	authority	|
+1783272	|	Terrabacterida	|		|	synonym	|
+1937956	|	Halichondria (Halichondria)	|		|	scientific name	|
+2283794	|	Methanogen Class I	|		|	synonym	|
+2283794	|	Methanomada	|		|	equivalent name	|
+2283794	|	Methanomada group	|		|	scientific name	|
+2283794	|	"Methanomada" Petitjean et al. 2015	|		|	authority	|
+2559587	|	Riboviria	|		|	scientific name	|
+2559587	|	RNA viruses and retroviruses	|		|	genbank common name	|
+2559587	|	RNA viruses and viroids	|		|	common name	|
+2559587	|	RNA viruses	|		|	common name	|
+2698737	|	Sar Burki et al. 2008	|		|	authority	|
+2698737	|	Sar	|		|	scientific name	|
+2698737	|	SAR supergroup	|		|	synonym	|
+2732396	|	Orthornavirae	|		|	scientific name	|
+2732406	|	Kitrinoviricota	|		|	scientific name	|
+2732406	|	Tombus-Noda-like virus sp.	|		|	equivalent name	|
+2732462	|	Flasuviricetes	|		|	scientific name	|
+2732545	|	Amarillovirales	|		|	scientific name	|
+3044782	|	Orthoflavivirus	|		|	scientific name	|
+3047370	|	Orthoflavivirus apoiense	|		|	scientific name	|
+3366610	|	"Euryarchaeida" Luketa 2012	|		|	authority	|
+3366610	|	Euryarchaeida	|		|	synonym	|
+3366610	|	Methanobacteriati (Garrity and Holt 2023) Oren and Goker 2024	|		|	authority	|
+3366610	|	Methanobacteriati	|		|	scientific name	|
+3406573	|	DSM 119353	|	DSM 119353 <type strain>	|	type material	|
+3406573	|	DSM-119353	|	DSM-119353 <type strain>	|	type material	|
+3406573	|	DSM:119353	|	DSM:119353 <type strain>	|	type material	|
+3406573	|	DSM119353	|	DSM119353 <type strain>	|	type material	|
+3406573	|	PCM<POL> 3548	|	PCM<POL> 3548 <type strain>	|	type material	|
+3406573	|	PCM<POL>-3548	|	PCM<POL>-3548 <type strain>	|	type material	|
+3406573	|	PCM<POL>:3548	|	PCM<POL>:3548 <type strain>	|	type material	|
+3406573	|	PCM<POL>3548	|	PCM<POL>3548 <type strain>	|	type material	|
+3406573	|	strain 2.9	|	strain 2.9 <type strain>	|	type material	|
+3406573	|	Streptomyces sp. 2.9	|		|	includes	|
+3406573	|	Streptomyces sp. 4.24	|		|	includes	|
+3406573	|	"Streptomyces tritrimontium" Bielanska et al. 2025	|		|	authority	|
+3406573	|	Streptomyces tritrimontium	|		|	scientific name	|

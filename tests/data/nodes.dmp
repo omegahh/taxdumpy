@@ -1,0 +1,86 @@
+1	|	1	|	no rank	|		|	8	|	0	|	1	|	0	|	0	|	0	|	0	|	0	|		|
+2	|	131567	|	domain	|		|	0	|	0	|	11	|	0	|	0	|	0	|	0	|	0	|		|
+1760	|	201174	|	class	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|		|
+1839	|	85015	|	genus	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+1883	|	2062	|	genus	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+2062	|	85011	|	family	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+2157	|	131567	|	domain	|		|	0	|	0	|	11	|	0	|	0	|	0	|	0	|	0	|		|
+2158	|	183925	|	order	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+2159	|	2158	|	family	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+2160	|	2159	|	genus	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+2161	|	2160	|	species	|	MB	|	0	|	1	|	11	|	1	|	0	|	1	|	1	|	0	|	code compliant; specified	|
+2759	|	131567	|	domain	|		|	1	|	0	|	1	|	0	|	1	|	0	|	0	|	0	|		|
+4762	|	33634	|	phylum	|		|	4	|	1	|	1	|	1	|	1	|	1	|	0	|	0	|	code compliant	|
+4776	|	4762	|	order	|		|	4	|	1	|	1	|	1	|	1	|	1	|	0	|	0	|	code compliant	|
+4777	|	4776	|	family	|		|	4	|	1	|	1	|	1	|	1	|	1	|	0	|	0	|	code compliant	|
+4780	|	4777	|	genus	|		|	4	|	1	|	1	|	1	|	1	|	1	|	0	|	0	|	code compliant	|
+4781	|	4780	|	species	|	PH	|	4	|	1	|	1	|	1	|	1	|	1	|	1	|	0	|	code compliant; specified	|
+6040	|	33208	|	phylum	|		|	1	|	1	|	1	|	1	|	4	|	0	|	0	|	0	|	code compliant	|
+6042	|	6040	|	class	|		|	1	|	1	|	1	|	1	|	4	|	1	|	0	|	0	|	code compliant	|
+6060	|	1779162	|	family	|		|	1	|	1	|	1	|	1	|	4	|	1	|	0	|	0	|	code compliant	|
+6061	|	6060	|	genus	|		|	1	|	1	|	1	|	1	|	4	|	1	|	0	|	0	|	code compliant	|
+6063	|	1937956	|	species	|	HP	|	1	|	1	|	1	|	1	|	4	|	1	|	1	|	0	|	code compliant; specified	|
+6072	|	33208	|	clade	|		|	1	|	1	|	1	|	1	|	5	|	0	|	1	|	0	|		|
+7711	|	33511	|	phylum	|		|	1	|	1	|	1	|	1	|	5	|	1	|	0	|	0	|	code compliant	|
+7742	|	89593	|	clade	|		|	10	|	0	|	1	|	1	|	2	|	1	|	0	|	0	|		|
+7776	|	7742	|	clade	|		|	10	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|		|
+7777	|	7776	|	class	|		|	10	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+7863	|	7777	|	subclass	|		|	10	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+7864	|	7863	|	order	|		|	10	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+7865	|	7864	|	family	|		|	10	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+7866	|	7865	|	genus	|		|	10	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+7868	|	7866	|	species	|	CM	|	10	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|	code compliant; specified	|
+8287	|	117571	|	superclass	|		|	10	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|	code compliant	|
+9347	|	32525	|	clade	|		|	2	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|		|
+9443	|	314146	|	order	|		|	5	|	0	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+9526	|	314293	|	parvorder	|		|	5	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+9604	|	314295	|	family	|		|	5	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+9605	|	207598	|	genus	|		|	5	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+9606	|	9605	|	species	|	HS	|	5	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|	code compliant; specified	|
+10239	|	1	|	acellular root	|		|	9	|	0	|	1	|	0	|	0	|	0	|	0	|	0	|		|
+11050	|	2732545	|	family	|		|	9	|	1	|	1	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+28890	|	3366610	|	phylum	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|		|
+29299	|	1839	|	species	|	NP	|	0	|	1	|	11	|	1	|	0	|	1	|	1	|	0	|	code compliant; specified	|
+32523	|	1338369	|	clade	|		|	10	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|		|
+32524	|	32523	|	clade	|		|	10	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|		|
+32525	|	40674	|	clade	|		|	2	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|		|
+33154	|	2759	|	clade	|		|	4	|	0	|	1	|	1	|	1	|	1	|	1	|	0	|		|
+33208	|	33154	|	kingdom	|		|	1	|	0	|	1	|	1	|	1	|	1	|	0	|	0	|	code compliant	|
+33213	|	6072	|	clade	|		|	1	|	1	|	1	|	1	|	5	|	1	|	1	|	0	|		|
+33511	|	33213	|	clade	|		|	1	|	1	|	1	|	1	|	5	|	1	|	1	|	0	|		|
+33634	|	2698737	|	clade	|		|	4	|	0	|	1	|	1	|	1	|	1	|	0	|	0	|		|
+40674	|	32524	|	class	|		|	2	|	0	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+63221	|	9606	|	subspecies	|	HS	|	5	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|	code compliant; specified	|
+64280	|	3047370	|	no rank	|		|	9	|	1	|	1	|	1	|	0	|	1	|	1	|	0	|		|
+85009	|	1760	|	order	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+85011	|	1760	|	order	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+85015	|	85009	|	family	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+89593	|	7711	|	subphylum	|		|	10	|	0	|	1	|	1	|	2	|	0	|	0	|	0	|	code compliant	|
+117570	|	7776	|	clade	|		|	10	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|		|
+117571	|	117570	|	clade	|		|	10	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|		|
+131567	|	1	|	cellular root	|	CO	|	8	|	1	|	1	|	1	|	0	|	1	|	1	|	0	|		|
+183925	|	2283794	|	class	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	code compliant	|
+201174	|	1783272	|	phylum	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|		|
+207598	|	9604	|	subfamily	|		|	5	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|	code compliant	|
+314146	|	1437010	|	superorder	|		|	2	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+314293	|	376913	|	infraorder	|		|	5	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|	code compliant	|
+314295	|	9526	|	superfamily	|		|	5	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|	code compliant	|
+376913	|	9443	|	suborder	|		|	5	|	1	|	1	|	1	|	2	|	1	|	0	|	0	|	code compliant	|
+741158	|	9606	|	subspecies	|	HS	|	5	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|		|
+1338369	|	8287	|	clade	|		|	10	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|		|
+1437010	|	9347	|	clade	|		|	2	|	1	|	1	|	1	|	2	|	1	|	1	|	0	|		|
+1779146	|	6042	|	subclass	|		|	1	|	1	|	1	|	1	|	4	|	1	|	0	|	0	|	code compliant	|
+1779162	|	1779146	|	order	|		|	1	|	1	|	1	|	1	|	4	|	1	|	0	|	0	|	code compliant	|
+1783272	|	2	|	kingdom	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|		|
+1937956	|	6061	|	subgenus	|		|	1	|	1	|	1	|	1	|	4	|	1	|	0	|	0	|	code compliant	|
+2283794	|	28890	|	clade	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|		|
+2559587	|	10239	|	realm	|	RX	|	9	|	1	|	1	|	1	|	0	|	1	|	0	|	0	|		|
+2698737	|	2759	|	clade	|		|	1	|	1	|	1	|	1	|	1	|	1	|	0	|	0	|		|
+2732396	|	2559587	|	kingdom	|		|	9	|	1	|	1	|	1	|	0	|	1	|	0	|	0	|		|
+2732406	|	2732396	|	phylum	|		|	9	|	1	|	1	|	1	|	0	|	1	|	0	|	0	|		|
+2732462	|	2732406	|	class	|		|	9	|	1	|	1	|	1	|	0	|	1	|	0	|	0	|		|
+2732545	|	2732462	|	order	|		|	9	|	1	|	1	|	1	|	0	|	1	|	0	|	0	|		|
+3044782	|	11050	|	genus	|		|	9	|	1	|	1	|	1	|	0	|	1	|	0	|	0	|		|
+3047370	|	3044782	|	species	|	OA	|	9	|	1	|	1	|	1	|	0	|	1	|	0	|	0	|	code compliant; specified	|
+3366610	|	2157	|	kingdom	|		|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|		|
+3406573	|	1883	|	species	|	ST	|	0	|	1	|	11	|	1	|	0	|	1	|	0	|	0	|	effective current name;specified	|
