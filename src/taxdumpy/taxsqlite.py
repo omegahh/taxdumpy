@@ -6,13 +6,12 @@ Created: 2025-06-30 19:51:00
 
 import re
 import sqlite3
-
-from pathlib import Path
-from rapidfuzz import process, fuzz
 from functools import cached_property
-from typing import List, Dict
+from pathlib import Path
 
-from taxdumpy.ansi import u_str, m_color
+from rapidfuzz import fuzz, process
+
+from taxdumpy.ansi import m_color, u_str
 from taxdumpy.basic import Node, TaxidError, ValidationError
 from taxdumpy.database import TaxonomyDatabase
 
@@ -140,7 +139,7 @@ class TaxSQLite(TaxonomyDatabase):
         all_names = [
             row["name"]
             for row in self._conn.execute(
-                "SELECT name FROM names WHERE name_class='scientific'"
+                "SELECT name FROM names WHERE name_class='scientific name'"
             )
         ]
         return all_names
@@ -151,7 +150,7 @@ class TaxSQLite(TaxonomyDatabase):
         name2taxid = {
             row["name"]: row["taxid"]
             for row in self._conn.execute(
-                "SELECT taxid,name FROM names WHERE name_class='scientific'"
+                "SELECT taxid,name FROM names WHERE name_class='scientific name'"
             )
         }
         return name2taxid
