@@ -1,21 +1,18 @@
 """Tests for error handling throughout the package."""
 
 import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, mock_open
 
+from taxdumpy import TaxDb, Taxon
 from taxdumpy.basic import (
-    TaxdumpyError,
+    DatabaseCorruptionError,
     TaxDbError,
+    TaxdumpFileError,
+    TaxdumpyError,
     TaxidError,
     TaxRankError,
-    TaxdumpFileError,
-    DatabaseCorruptionError,
     ValidationError,
 )
-from taxdumpy import TaxDb, TaxSQLite, Taxon
-from taxdumpy.functions import upper_rank_id, RANKNAMES
+from taxdumpy.functions import upper_rank_id
 
 
 class TestCustomExceptions:

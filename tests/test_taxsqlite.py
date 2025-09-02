@@ -1,10 +1,10 @@
 """Tests for TaxSQLite class."""
 
-import pytest
 import sqlite3
-from pathlib import Path
 
-from taxdumpy import TaxSQLite, TaxidError
+import pytest
+
+from taxdumpy import TaxidError, TaxSQLite
 from taxdumpy.basic import Node
 
 

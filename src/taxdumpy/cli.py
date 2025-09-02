@@ -1,28 +1,26 @@
 """Taxdumpy command-line interface"""
 
-import os
-import sys
-import pickle
 import argparse
 import logging
+import os
+import pickle
+import sys
 from pathlib import Path
-from typing import List
 
 from tqdm import tqdm
 
-from taxdumpy.taxdb import TaxDb
-from taxdumpy.taxsqlite import TaxSQLite
-from taxdumpy.taxon import Taxon
-from taxdumpy.basic import (
-    TaxdumpyError,
-    TaxDbError,
-    TaxidError,
-    TaxdumpFileError,
-    ValidationError,
-    DatabaseCorruptionError,
-    TaxdumpyMemoryError,
-)
 from taxdumpy import __version__
+from taxdumpy.basic import (
+    DatabaseCorruptionError,
+    TaxDbError,
+    TaxdumpFileError,
+    TaxdumpyError,
+    TaxidError,
+    ValidationError,
+)
+from taxdumpy.taxdb import TaxDb
+from taxdumpy.taxon import Taxon
+from taxdumpy.taxsqlite import TaxSQLite
 
 
 # Configure logging for CLI
@@ -76,7 +74,7 @@ def handle_error(error: BaseException, exit_code: int = 1) -> int:
 
     elif isinstance(error, MemoryError):
         print(
-            f"❌ Memory Error: Not enough memory to complete operation", file=sys.stderr
+            "❌ Memory Error: Not enough memory to complete operation", file=sys.stderr
         )
         print(
             "💡 Try using TaxSQLite instead of TaxDb for better memory efficiency",
@@ -84,7 +82,7 @@ def handle_error(error: BaseException, exit_code: int = 1) -> int:
         )
 
     elif isinstance(error, KeyboardInterrupt):
-        print(f"\n❌ Operation cancelled by user", file=sys.stderr)
+        print("\n❌ Operation cancelled by user", file=sys.stderr)
 
     else:
         # Unexpected error
@@ -331,7 +329,7 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
                     if taxid < 1:
                         raise ValueError(f"Invalid taxid: {taxid}")
                     all_taxids.add(taxid)
-                except ValueError as e:
+                except ValueError:
                     raise ValidationError(
                         f"taxid_file line {line_num}", line, "positive integer"
                     )

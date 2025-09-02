@@ -1,13 +1,12 @@
 """Pytest configuration and shared fixtures."""
 
-import os
-import tempfile
-import pytest
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Generator
 
-import taxdumpy
+import pytest
+
 from taxdumpy import TaxDb, TaxSQLite
 
 

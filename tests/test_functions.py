@@ -1,9 +1,10 @@
 """Tests for functions module."""
 
 import pytest
-from taxdumpy import TaxDb, Taxon
-from taxdumpy.functions import upper_rank_id, RANKNAMES, RANK2LEVEL, LEVEL2RANK
+
+from taxdumpy import Taxon
 from taxdumpy.basic import TaxRankError
+from taxdumpy.functions import LEVEL2RANK, RANK2LEVEL, RANKNAMES, upper_rank_id
 
 
 class TestFunctions:
@@ -134,8 +135,8 @@ class TestFunctions:
 
     def test_function_imports(self):
         """Test that functions can be imported from package."""
-        from taxdumpy.functions import upper_rank_id
         from taxdumpy import upper_rank_id as pkg_upper_rank_id
+        from taxdumpy.functions import upper_rank_id
 
         # Should be the same function
         assert upper_rank_id is pkg_upper_rank_id

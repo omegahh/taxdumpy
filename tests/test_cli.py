@@ -1,12 +1,10 @@
 """Tests for CLI functionality."""
 
-import pytest
 import sys
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 from io import StringIO
+from unittest.mock import MagicMock, patch
 
-from taxdumpy.cli import main, _params_parser
+from taxdumpy.cli import _params_parser, main
 
 
 class TestCLI:

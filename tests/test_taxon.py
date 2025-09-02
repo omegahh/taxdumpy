@@ -1,7 +1,8 @@
 """Tests for Taxon class."""
 
 import pytest
-from taxdumpy import Taxon, TaxDb, TaxSQLite
+
+from taxdumpy import Taxon
 from taxdumpy.basic import Node
 
 

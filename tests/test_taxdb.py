@@ -1,9 +1,8 @@
 """Tests for TaxDb class."""
 
-import pytest
 import pickle
-from pathlib import Path
-from unittest.mock import patch, mock_open
+
+import pytest
 
 from taxdumpy import TaxDb, TaxDbError, TaxidError
 from taxdumpy.basic import Node

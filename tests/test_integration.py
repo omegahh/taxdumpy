@@ -1,10 +1,11 @@
 """Integration tests for taxdumpy package."""
 
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
-from taxdumpy import TaxDb, TaxSQLite, Taxon, upper_rank_id
+import pytest
+
+from taxdumpy import TaxDb, Taxon, TaxSQLite, upper_rank_id
 
 
 @pytest.mark.integration
@@ -158,8 +159,14 @@ class TestIntegration:
     def test_package_imports(self):
         """Test that all expected symbols can be imported from package."""
         # Test main imports
-        from taxdumpy import TaxDb, TaxSQLite, Taxon, upper_rank_id
-        from taxdumpy import TaxDbError, TaxidError
+        from taxdumpy import (
+            TaxDb,
+            TaxDbError,
+            TaxidError,
+            Taxon,
+            TaxSQLite,
+            upper_rank_id,
+        )
 
         # Test that classes are callable
         assert callable(TaxDb)
@@ -173,7 +180,7 @@ class TestIntegration:
 
     def test_ansi_module_integration(self):
         """Test ANSI color module integration."""
-        from taxdumpy.ansi import u_str, b_str, r_str, m_color
+        from taxdumpy.ansi import b_str, m_color, r_str, u_str
 
         # Test functions are callable
         test_string = "test"

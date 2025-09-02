@@ -2,8 +2,8 @@
 
 from abc import ABC, abstractmethod
 from functools import cached_property
-from typing import Dict, List, Set
 from pathlib import Path
+from typing import Dict, List, Set
 
 from taxdumpy.basic import Node
 

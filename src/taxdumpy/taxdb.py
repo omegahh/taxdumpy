@@ -4,23 +4,23 @@ Author: Hao Hong (omeganju@gmail.com)
 Created: 2025-06-30 19:51:00
 """
 
-import re
-import pickle
 import logging
-from pathlib import Path
+import pickle
+import re
 from functools import cached_property
+from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz, process
 
+from taxdumpy.ansi import m_color, u_str
 from taxdumpy.basic import (
     Node,
     TaxDbError,
-    TaxidError,
     TaxdumpFileError,
+    TaxidError,
     ValidationError,
 )
-from taxdumpy.ansi import u_str, m_color
 from taxdumpy.database import TaxonomyDatabase
 
 # Set up logging
@@ -135,7 +135,7 @@ class TaxDb(TaxonomyDatabase):
                         # Different files have different formats, but all should have some tabs
                         if not first_line or "\t" not in first_line:
                             corrupted_files.append(filepath.name)
-                except (OSError, UnicodeDecodeError) as e:
+                except (OSError, UnicodeDecodeError):
                     corrupted_files.append(filepath.name)
 
         # Report issues
@@ -421,7 +421,7 @@ class TaxDb(TaxonomyDatabase):
         """Manually save the current database to pickle file."""
         print(f"Writing to {self._pickle}")
         self._save_pickle(self._taxid2nodes, self._old2news, self.delnodes)
-        print(f"Taxdump dumped!")
+        print("Taxdump dumped!")
 
     def get_node(self, taxid: int | str) -> Node:
         """

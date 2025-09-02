@@ -1,10 +1,8 @@
 """Tests for API consistency across database backends."""
 
 import pytest
-from pathlib import Path
-from typing import Type
 
-from taxdumpy import TaxDb, TaxSQLite, TaxonomyDatabase, create_database
+from taxdumpy import TaxDb, TaxonomyDatabase, TaxSQLite, create_database
 from taxdumpy.basic import TaxidError, ValidationError
 
 

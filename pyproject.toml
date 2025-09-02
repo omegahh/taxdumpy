@@ -66,3 +66,15 @@ exclude = [
     "Makefile",
     "tox.ini"
 ]
+
+[tool.ruff.lint]
+# Only enable import sorting - disable all other linting rules
+select = ["I"]  # Only isort (import sorting)
+ignore = []
+
+[tool.ruff.format]
+# Use ruff for formatting
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

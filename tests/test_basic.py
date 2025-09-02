@@ -1,6 +1,7 @@
 """Tests for basic data structures and exceptions."""
 
 import pytest
+
 from taxdumpy.basic import Node, TaxDbError, TaxidError, TaxRankError
 
 

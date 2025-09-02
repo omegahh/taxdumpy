@@ -7,8 +7,8 @@ Created: 2025-07-06 17:07:57
 from typing import Literal
 
 from taxdumpy.basic import TaxRankError
-from taxdumpy.taxon import Taxon
 from taxdumpy.taxdb import TaxDb
+from taxdumpy.taxon import Taxon
 
 # from taxdumpy.taxsqlite import TaxSQLite
 

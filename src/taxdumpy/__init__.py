@@ -2,20 +2,20 @@
 
 __version__ = "1.1.6"
 
-from taxdumpy.taxdb import TaxDb
-from taxdumpy.taxsqlite import TaxSQLite
-from taxdumpy.taxon import Taxon
-from taxdumpy.functions import upper_rank_id
 from taxdumpy.basic import (
-    TaxdumpyError,
+    DatabaseCorruptionError,
     TaxDbError,
+    TaxdumpFileError,
+    TaxdumpyError,
     TaxidError,
     TaxRankError,
-    TaxdumpFileError,
-    DatabaseCorruptionError,
     ValidationError,
 )
 from taxdumpy.database import TaxonomyDatabase, create_database
+from taxdumpy.functions import upper_rank_id
+from taxdumpy.taxdb import TaxDb
+from taxdumpy.taxon import Taxon
+from taxdumpy.taxsqlite import TaxSQLite
 
 __all__ = [
     # Exceptions
