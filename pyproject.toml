@@ -34,7 +34,7 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-dev = ["black", "pytest", "pytest-cov", "pytest-mock", "build"]
+dev = ["ruff", "pytest", "pytest-cov", "pytest-mock", "build"]
 
 [project.urls]
 Documentation = "https://github.com/omegahh/taxdumpy"
