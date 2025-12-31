@@ -4,6 +4,7 @@ Author: Hao Hong (omeganju@gmail.com)
 Created: 2025-06-30 19:51:00
 """
 
+import logging
 import re
 import sqlite3
 from functools import cached_property
@@ -14,6 +15,9 @@ from rapidfuzz import fuzz, process
 from taxdumpy.ansi import m_color, u_str
 from taxdumpy.basic import Node, TaxidError, ValidationError
 from taxdumpy.database import TaxonomyDatabase
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class TaxSQLite(TaxonomyDatabase):
@@ -35,8 +39,12 @@ class TaxSQLite(TaxonomyDatabase):
         # open a sqlite connection, and use row_factory for element access, r['name'] for example
         self._conn = sqlite3.connect(self._db_path)
         self._conn.row_factory = sqlite3.Row
-        if not self._check_tables():
-            self._build_database()
+        try:
+            if not self._check_tables():
+                self._build_database()
+        except Exception:
+            self._conn.close()
+            raise
 
     def __enter__(self):
         return self
@@ -290,29 +298,6 @@ class TaxSQLite(TaxonomyDatabase):
             division=r["division"],
         )
 
-    @staticmethod
-    def _validate_taxid(taxid: int | str) -> int:
-        """Validate and convert taxid to integer."""
-        if taxid is None:
-            raise ValidationError("taxid", taxid, "non-None value")
-
-        # Convert string to int if possible
-        if isinstance(taxid, str):
-            if not taxid.strip():
-                raise ValidationError("taxid", taxid, "non-empty string")
-            try:
-                taxid = int(taxid.strip())
-            except ValueError:
-                raise ValidationError("taxid", taxid, "integer or numeric string")
-
-        if not isinstance(taxid, int):
-            raise ValidationError("taxid", type(taxid).__name__, "integer")
-
-        if taxid < 1:
-            raise ValidationError("taxid", taxid, "positive integer")
-
-        return taxid
-
     def _suggest_similar_taxids(self, taxid: int) -> str:
         """Suggest similar taxids when lookup fails."""
         # Find taxids within a reasonable range using SQL
@@ -373,6 +358,9 @@ class TaxSQLite(TaxonomyDatabase):
                         {"name": name, "taxid": taxid, "score": score}
                     )
                 except KeyError:
+                    logger.warning(
+                        f"Name '{name}' found in search but not in name2taxid mapping"
+                    )
                     continue
 
             return formatted_results
@@ -407,9 +395,10 @@ class TaxSQLite(TaxonomyDatabase):
                     print(
                         f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}"
                     )
-                except Exception:
-                    # Skip problematic results silently to maintain consistency with TaxDb
+                except Exception as e:
+                    logger.warning(f"Error displaying result for taxid {tid}: {e}")
                     continue
 
         except Exception as e:
             print(f"Search error: {e}")
+            logger.error(f"Fuzzy search display failed: {e}")
