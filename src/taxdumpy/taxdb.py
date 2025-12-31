@@ -401,7 +401,7 @@ class TaxDb(TaxonomyDatabase):
                         if taxid in acr_names.keys()
                         else None
                     ),
-                    division=div2codes[divid],
+                    division=div2codes.get(divid, f"UNKNOWN_{divid}"),
                 )
 
                 taxid2nodes[taxid] = node
@@ -473,29 +473,6 @@ class TaxDb(TaxonomyDatabase):
             )
 
         return self._taxid2nodes[validated_taxid]
-
-    @staticmethod
-    def _validate_taxid(taxid: int | str) -> int:
-        """Validate and convert taxid to integer."""
-        if taxid is None:
-            raise ValidationError("taxid", taxid, "non-None value")
-
-        # Convert string to int if possible
-        if isinstance(taxid, str):
-            if not taxid.strip():
-                raise ValidationError("taxid", taxid, "non-empty string")
-            try:
-                taxid = int(taxid.strip())
-            except ValueError:
-                raise ValidationError("taxid", taxid, "integer or numeric string")
-
-        if not isinstance(taxid, int):
-            raise ValidationError("taxid", type(taxid).__name__, "integer")
-
-        if taxid < 1:
-            raise ValidationError("taxid", taxid, "positive integer")
-
-        return taxid
 
     def _suggest_similar_taxids(self, taxid: int) -> str:
         """Suggest similar taxids when lookup fails."""
