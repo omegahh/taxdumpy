@@ -5,7 +5,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Dict, List, Set
 
-from taxdumpy.basic import Node
+from taxdumpy.basic import Node, ValidationError
 
 
 class TaxonomyDatabase(ABC):
@@ -112,6 +112,39 @@ class TaxonomyDatabase(ABC):
     def __repr__(self) -> str:
         """Return string representation of database."""
         pass
+
+    @staticmethod
+    def _validate_taxid(taxid: int | str) -> int:
+        """Validate and convert taxid to integer.
+
+        Args:
+            taxid: NCBI taxonomy ID (integer or string)
+
+        Returns:
+            Validated taxid as integer
+
+        Raises:
+            ValidationError: If taxid is invalid format
+        """
+        if taxid is None:
+            raise ValidationError("taxid", taxid, "non-None value")
+
+        # Convert string to int if possible
+        if isinstance(taxid, str):
+            if not taxid.strip():
+                raise ValidationError("taxid", taxid, "non-empty string")
+            try:
+                taxid = int(taxid.strip())
+            except ValueError:
+                raise ValidationError("taxid", taxid, "integer or numeric string")
+
+        if not isinstance(taxid, int):
+            raise ValidationError("taxid", type(taxid).__name__, "integer")
+
+        if taxid < 1:
+            raise ValidationError("taxid", taxid, "positive integer")
+
+        return taxid
 
     def close(self) -> None:
         """
