@@ -11,7 +11,6 @@ class Node:
         "name",
         "equal",
         "acronym",
-        "legacy",
         "division",
     )
     taxid: int
