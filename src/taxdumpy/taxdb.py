@@ -34,6 +34,7 @@ class TaxDb(TaxonomyDatabase):
     Args:
         taxdump_dir: Path to directory containing NCBI taxdump files
         fast: Use fast mode with pre-cached subset of data
+        verbose: If True, log INFO messages during initialization (default: False)
 
     Raises:
         ValidationError: If taxdump_dir is invalid
@@ -50,7 +51,7 @@ class TaxDb(TaxonomyDatabase):
         "names.dmp",
     ]
 
-    def __init__(self, taxdump_dir: Path | str, fast: bool = False) -> None:
+    def __init__(self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False) -> None:
         # Call parent constructor
         super().__init__(taxdump_dir)
 
@@ -58,6 +59,7 @@ class TaxDb(TaxonomyDatabase):
         self._validate_init_params(taxdump_dir, fast)
 
         self._fast = fast
+        self._verbose = verbose
 
         # Set up file paths
         self._taxdbf = [self._taxdump_dir / filename for filename in self.REQUIRED_FILES]
@@ -68,9 +70,11 @@ class TaxDb(TaxonomyDatabase):
         self._check_taxdump()
 
         try:
-            logger.info(f"Loading taxonomy database from {self._taxdump_dir}")
+            if self._verbose:
+                logger.info(f"Loading taxonomy database from {self._taxdump_dir}")
             self._taxid2nodes, self._old2news, self._delnodes = self._load_taxdump()
-            logger.info(f"Successfully loaded {len(self._taxid2nodes):,} taxonomy nodes")
+            if self._verbose:
+                logger.info(f"Successfully loaded {len(self._taxid2nodes):,} taxonomy nodes")
         except Exception as e:
             logger.error(f"Failed to load taxonomy database: {e}")
             raise

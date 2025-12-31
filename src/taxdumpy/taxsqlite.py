@@ -18,13 +18,18 @@ from taxdumpy.database import TaxonomyDatabase
 
 class TaxSQLite(TaxonomyDatabase):
     """
-    Create an object of the TaxDb class.
+    Create an object of the TaxSQLite class for NCBI taxonomy database operations.
+
+    Args:
+        taxdump_dir: Path to directory containing NCBI taxdump files
+        verbose: If True, print status messages during initialization (default: False)
     """
 
-    def __init__(self, taxdump_dir: Path | str):
+    def __init__(self, taxdump_dir: Path | str, verbose: bool = False):
         # Call parent constructor
         super().__init__(taxdump_dir)
 
+        self._verbose = verbose
         self._db_path = self._taxdump_dir / "taxdump.sqlite"
 
         # open a sqlite connection, and use row_factory for element access, r['name'] for example
@@ -66,7 +71,8 @@ class TaxSQLite(TaxonomyDatabase):
 
     def _build_database(self):
         try:
-            print("Build up TAXDUMP SQLite Database...")
+            if self._verbose:
+                print("Build up TAXDUMP SQLite Database...")
             c = self._conn.cursor()
             # 1) Create Tables
             c.executescript(
