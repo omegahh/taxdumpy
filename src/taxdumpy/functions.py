@@ -83,12 +83,16 @@ def upper_rank_id(
             RANKNAMES,
         )
     if rank not in RANKNAMES:
-        raise TaxRankError(rank, f"{rank=} is a non-canonical phylogenetic rank", RANKNAMES)
+        raise TaxRankError(
+            rank, f"{rank=} is a non-canonical phylogenetic rank", RANKNAMES
+        )
     # and check rank levels
     curr_level = RANK2LEVEL[curr_rank]
     high_level = RANK2LEVEL[rank]
     if high_level <= curr_level:
-        raise RuntimeError(f"{rank=} is in lower/equal level than {curr_rank=} in phylogenetic tree")
+        raise RuntimeError(
+            f"{rank=} is in lower/equal level than {curr_rank=} in phylogenetic tree"
+        )
     # Get upper rank iteratively
     if rank in tax.rank_lineage:
         return tax.taxid_lineage[tax.rank_lineage.index(rank)]
