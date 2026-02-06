@@ -67,6 +67,9 @@ exclude = [
     "tox.ini"
 ]
 
+[tool.ruff]
+line-length = 120
+
 [tool.ruff.lint]
 # Only enable import sorting - disable all other linting rules
 select = ["I"]  # Only isort (import sorting)
