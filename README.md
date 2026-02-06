@@ -1,4 +1,4 @@
-# Taxdumpy 🧬
+# Taxdumpy
 
 _A high-performance Python toolkit for parsing NCBI Taxonomy databases with lineage resolution and fuzzy search_
 
@@ -11,25 +11,13 @@ _A high-performance Python toolkit for parsing NCBI Taxonomy databases with line
 
 ## Features
 
-- **🚀 Blazing Fast Parsing**
-  Optimized loading of NCBI taxdump files (`nodes.dmp`, `names.dmp`, etc.) with pickle caching for 3x speedup
-
-- **🔬 Comprehensive Taxon Operations**
-  - TaxID validation and complete lineage tracing
-  - Scientific name resolution and rank-based filtering
-  - Handle merged/deleted nodes and legacy taxonomies
-  - Access to division information and metadata
-
-- **🔍 Fuzzy Search**
-  Rapid approximate name matching using `rapidfuzz` - find organisms even with typos
-
-- **⚡ High Performance**
-  - Memory-efficient data structures for large taxonomies
-  - Dual backend support: in-memory (TaxDb) and SQLite (TaxSQLite)
-  - Lazy loading and optimized caching strategies
-
-- **🖥️ Command Line Interface**
-  Ready-to-use CLI for caching, searching, and lineage resolution
+- **Fast Parsing**: Optimized loading of NCBI taxdump files with pickle caching for ~3x speedup
+- **Dual Backends**: In-memory (`TaxDb`) for speed or SQLite (`TaxSQLite`) for memory efficiency
+- **Lineage Resolution**: Complete lineage tracing with automatic handling of merged/deleted nodes
+- **Rank Codes**: Comparable `RC` class for efficient rank-based operations and grouping
+- **Fuzzy Search**: Rapid approximate name matching using `rapidfuzz`
+- **Batch Grouping**: Group taxids by rank level with `group_taxids_by_rank`
+- **CLI**: Ready-to-use commands for caching, searching, and lineage resolution
 
 ## Installation
 
@@ -58,7 +46,7 @@ pip install -e .[dev]
 ```python
 from taxdumpy import TaxDb, Taxon
 
-# Initialize database
+# Initialize database (uses pickle cache if available)
 taxdb = TaxDb("/path/to/taxdump")
 
 # Create taxon objects
@@ -74,8 +62,21 @@ print(human.rank_lineage)
 
 # Check taxonomic properties
 print(f"Rank: {human.rank}")           # species
-print(f"Division: {human.division}")   # Mammals
+print(f"Division: {human.division}")   # Primates
 print(f"Is legacy: {human.is_legacy}") # False
+```
+
+### Using the Factory Function
+
+```python
+from taxdumpy import create_database, Taxon
+
+# Create database with preferred backend
+db = create_database(backend="sqlite", taxdump_dir="/path/to/taxdump")
+# Or: backend="dict" for in-memory
+
+taxon = Taxon(9606, db)
+print(taxon.name)  # Homo sapiens
 ```
 
 ### Fuzzy Search
@@ -85,9 +86,35 @@ print(f"Is legacy: {human.is_legacy}") # False
 results = taxdb._rapid_fuzz("Escherichia coli", limit=5)
 for match in results:
     print(f"{match['name']} (TaxID: {match['taxid']}, Score: {match['score']})")
+```
 
-# Search influenza strains
-flu_results = taxdb._rapid_fuzz("Influenza A", limit=10)
+### Rank Codes and Grouping
+
+```python
+from taxdumpy import TaxDb, Taxon, RC, group_taxids_by_rank
+
+taxdb = TaxDb("/path/to/taxdump")
+human = Taxon(9606, taxdb)
+
+# RC (Rank Code) - comparable rank representation
+print(human.rc)              # RC('S') for species
+print(human.rankcode_lineage)  # [RC('S'), RC('G'), RC('F1'), RC('F'), ...]
+
+# RC comparison (lower value = higher rank)
+RC("R") < RC("D") < RC("G") < RC("S")  # True
+RC("F") < RC("F1")  # True (F1 is below F)
+
+# Group taxids by rank
+taxids = [9606, 9598, 9597]  # Human, Chimp, Bonobo
+by_family = group_taxids_by_rank(taxids, "family", taxdb)
+# {9604: [9606, 9598, 9597]}  # All in Hominidae
+
+by_genus = group_taxids_by_rank(taxids, "genus", taxdb)
+# {9605: [9606], 9598: [9598], 9597: [9597]}  # Different genera
+
+# MPA-style lineage representation
+print(human.mpa_repr)
+# 'd__Eukaryota|k__Metazoa|p__Chordata|...|g__Homo|s__Homo_sapiens'
 ```
 
 ## Command Line Interface
@@ -95,9 +122,7 @@ flu_results = taxdb._rapid_fuzz("Influenza A", limit=10)
 ### Check Version
 
 ```bash
-# Display current version
 taxdumpy --version
-# Output: taxdumpy 0.1.1
 ```
 
 ### Cache Database
@@ -172,15 +197,19 @@ export TAXDB_PATH=~/.taxonkit
 ### SQLite Backend
 
 ```python
-from taxdumpy import TaxSQLite
+from taxdumpy import TaxSQLite, Taxon
 
 # Use SQLite for memory-efficient storage
-db = TaxSQLite("/path/to/database.sqlite")
-db.build_database("/path/to/taxdump")
+db = TaxSQLite("/path/to/taxdump")  # Creates taxonomy.db in that directory
 
 # Same API as TaxDb
 taxon = Taxon(9606, db)
 print(taxon.name_lineage)
+
+# Use as context manager
+with TaxSQLite("/path/to/taxdump") as db:
+    taxon = Taxon(9606, db)
+    print(taxon.name)
 ```
 
 ### Batch Processing
@@ -197,21 +226,45 @@ for taxid in taxids:
     print(f"{taxon.name}: {' > '.join(taxon.name_lineage[:3])}")
 ```
 
-### Custom Utilities
+### Handling Merged/Legacy TaxIDs
 
 ```python
-from taxdumpy import upper_rank_id
+from taxdumpy import TaxDb, Taxon
 
-# Find parent at specific taxonomic rank
-kingdom_id = upper_rank_id(9606, "kingdom", taxdb)
-print(f"Human kingdom TaxID: {kingdom_id}")  # 33208 (Metazoa)
+taxdb = TaxDb("/path/to/taxdump")
+
+# Merged taxids are automatically resolved
+taxon = Taxon(old_taxid, taxdb)
+print(taxon.is_legacy)  # True if taxid was merged
+print(taxon.taxid)      # Original taxid
+print(taxon.node.taxid) # Current/resolved taxid
+```
+
+### Exception Handling
+
+```python
+from taxdumpy import TaxDb, Taxon, TaxidError, TaxRankError, TaxDbError
+
+taxdb = TaxDb("/path/to/taxdump")
+
+try:
+    taxon = Taxon(999999999, taxdb)
+except TaxidError as e:
+    print(f"Invalid taxid: {e}")
+    # Includes suggestions for similar taxids
+
+try:
+    rank_id = upper_rank_id(9606, "invalid_rank", taxdb)
+except TaxRankError as e:
+    print(f"Invalid rank: {e}")
+    # Includes list of valid ranks
 ```
 
 ## API Reference
 
 ### Core Classes
 
-**TaxDb**: In-memory dictionary-based database
+**TaxDb**: In-memory dictionary-based database with pickle caching
 
 ```python
 TaxDb(taxdump_dir: str, fast: bool = False)
@@ -220,7 +273,7 @@ TaxDb(taxdump_dir: str, fast: bool = False)
 **TaxSQLite**: SQLite-based persistent database
 
 ```python
-TaxSQLite(db_path: str)
+TaxSQLite(taxdump_dir: str)
 ```
 
 **Taxon**: Taxonomic unit with lineage resolution
@@ -229,13 +282,54 @@ TaxSQLite(db_path: str)
 Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 
 # Properties
-.name: str              # Scientific name
-.rank: str              # Taxonomic rank
-.division: str          # NCBI division
-.lineage: List[Node]    # Complete lineage
-.name_lineage: List[str] # Names only
-.rank_lineage: List[str] # Ranks only
-.is_legacy: bool        # Legacy/merged node
+.name: str               # Scientific name
+.rank: str               # Taxonomic rank
+.division: str           # NCBI division
+.parent: int             # Parent taxid
+.lineage: list[Node]     # Complete lineage as Node objects
+.name_lineage: list[str] # Names from taxid to root
+.rank_lineage: list[str] # Ranks from taxid to root
+.taxid_lineage: list[int] # Taxids from taxid to root
+.is_legacy: bool         # True if taxid was merged
+.has_species_level: bool # True if lineage contains species rank
+.species_taxid: int | None # Taxid at species level
+```
+
+**Factory Function**
+
+```python
+from taxdumpy import create_database
+
+# backend: "sqlite", "sql", "dict", "memory", or "pickle"
+db = create_database(backend="sqlite", taxdump_dir="/path/to/taxdump")
+```
+
+### Rank Functions
+
+```python
+from taxdumpy import (
+    upper_rank_id,      # Get taxid at rank (raises TaxRankError if not found)
+    get_rank_taxid,     # Get taxid at rank (returns None if not found)
+    get_canonical_ranks, # Get dict of all canonical ranks in lineage
+    get_closest_rank,   # Get closest rank at or above target level
+    get_rank_distance,  # Calculate distance between two ranks
+    RANKNAMES,          # 8 canonical ranks: species → realm
+    EXTENDED_RANKS,     # 30+ ranks including sub-ranks
+)
+```
+
+### Exceptions
+
+```python
+from taxdumpy import (
+    TaxdumpyError,          # Base exception
+    TaxDbError,             # Database issues
+    TaxidError,             # Invalid/unknown taxid
+    TaxRankError,           # Invalid rank
+    TaxdumpFileError,       # Taxdump file issues
+    DatabaseCorruptionError, # Corrupted database
+    ValidationError,        # Input validation failures
+)
 ```
 
 ## Performance Tips
@@ -248,11 +342,11 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 
 ## Use Cases
 
-- **🧬 Metagenomics**: Classify and annotate environmental sequences
-- **🔬 Phylogenetics**: Build taxonomic trees and study evolutionary relationships
-- **📊 Bioinformatics**: Pipeline integration for taxonomy-aware analysis
-- **🔍 Data Validation**: Verify and standardize organism names in datasets
-- **📈 Research**: Large-scale taxonomic studies and biodiversity analysis
+- **Metagenomics**: Classify and annotate environmental sequences
+- **Phylogenetics**: Build taxonomic trees and study evolutionary relationships
+- **Bioinformatics**: Pipeline integration for taxonomy-aware analysis
+- **Data Validation**: Verify and standardize organism names in datasets
+- **Research**: Large-scale taxonomic studies and biodiversity analysis
 
 ## Requirements
 
@@ -266,53 +360,46 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 ### Development Setup
 
 ```bash
-# Clone repository
 git clone https://github.com/omegahh/taxdumpy.git
 cd taxdumpy
-
-# Install in development mode
 pip install -e .[dev]
-
-# Run tests
-pytest
-
-# Format code
-black src/ tests/
-
-# Check types and linting
-make lint
 ```
 
-### CI/CD Pipeline
+### Testing
 
-The project uses GitHub Actions for automated testing and deployment:
+```bash
+# Run all tests (requires 80% coverage)
+pytest
 
-- **CI Workflow**: Tests across Python 3.10-3.13, code formatting, and coverage
-- **PyPI Publishing**: Automatic releases on version tags (`v*`)
-- **Test PyPI**: Pre-release testing with tags like `v1.2.3-beta.1`
+# Run specific test categories
+pytest -m "not slow and not integration"  # Fast tests only
+pytest -m integration                      # Integration tests only
+
+# With coverage report
+pytest --cov=taxdumpy --cov-report=html
+```
+
+### Code Quality
+
+```bash
+# Format code and sort imports
+ruff format src/ tests/
+ruff check src/ tests/ --fix
+```
 
 ### Release Process
 
 ```bash
-# Automated release (recommended)
+# Automated release
 python scripts/release.py --version 1.2.3 --upload
 
-# Manual tagging triggers GitHub Actions
-git tag v1.2.3
-git push origin v1.2.3
+# Or manual: create tag and push (GitHub Actions publishes to PyPI)
+git tag v1.2.3 && git push origin v1.2.3
 ```
-
-### Contributing Guidelines
-
-1. **Code Style**: Use `black` for formatting
-2. **Type Hints**: Include comprehensive type annotations
-3. **Testing**: Maintain >80% test coverage
-4. **Documentation**: Update README and docstrings
-5. **Commits**: Use conventional commit messages
 
 ## License
 
-MIT © 2025 [Omega HH](https://github.com/omegahh)
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
