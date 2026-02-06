@@ -3,8 +3,7 @@
 import pytest
 
 from taxdumpy import Taxon
-from taxdumpy.basic import TaxRankError
-from taxdumpy.basic import RC
+from taxdumpy.basic import RC, TaxRankError
 from taxdumpy.functions import (
     LEVEL2RANK,
     RANK2LEVEL,
