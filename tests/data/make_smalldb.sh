@@ -1,7 +1,5 @@
 #!/bin/bash
 
-taxdumpy cache -f taxids.list
-
 head ~/.taxonkit/delnodes.dmp >delnodes.dmp
 cp ~/.taxonkit/division.dmp division.dmp
 
