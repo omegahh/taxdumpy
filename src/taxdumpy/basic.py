@@ -120,9 +120,7 @@ class TaxidError(TaxdumpyError):
 class TaxRankError(TaxdumpyError):
     """Raised when taxonomic rank operations fail."""
 
-    def __init__(
-        self, rank: str, message: str | None = None, valid_ranks: list | None = None
-    ):
+    def __init__(self, rank: str, message: str | None = None, valid_ranks: list | None = None):
         self.rank = rank
         self.valid_ranks = valid_ranks or []
 
@@ -170,9 +168,7 @@ class TaxdumpyMemoryError(TaxdumpyError):
 
     def __init__(self, operation: str, suggestion: str | None = None):
         self.operation = operation
-        default_suggestion = (
-            "Try using TaxSQLite instead of TaxDb for memory efficiency"
-        )
+        default_suggestion = "Try using TaxSQLite instead of TaxDb for memory efficiency"
         self.suggestion = suggestion or default_suggestion
 
         message = f"Memory error during {operation}"

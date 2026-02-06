@@ -199,9 +199,7 @@ class TestCLI:
 
     @patch("taxdumpy.cli.TaxSQLite")
     @patch("taxdumpy.cli.TaxDb")
-    def test_main_database_creation_mocking(
-        self, mock_taxdb, mock_taxsqlite, sample_taxdump_dir
-    ):
+    def test_main_database_creation_mocking(self, mock_taxdb, mock_taxsqlite, sample_taxdump_dir):
         """Test database creation with mocking."""
         # Mock the database classes
         mock_taxdb_instance = MagicMock()

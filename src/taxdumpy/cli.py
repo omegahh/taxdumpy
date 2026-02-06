@@ -61,9 +61,7 @@ def handle_error(error: BaseException, exit_code: int = 1) -> int:
 
     elif isinstance(error, FileNotFoundError):
         print(f"❌ File not found: {error.filename}", file=sys.stderr)
-        print(
-            "💡 Make sure the file path is correct and the file exists", file=sys.stderr
-        )
+        print("💡 Make sure the file path is correct and the file exists", file=sys.stderr)
 
     elif isinstance(error, PermissionError):
         print(f"❌ Permission denied: {error.filename}", file=sys.stderr)
@@ -73,9 +71,7 @@ def handle_error(error: BaseException, exit_code: int = 1) -> int:
         )
 
     elif isinstance(error, MemoryError):
-        print(
-            "❌ Memory Error: Not enough memory to complete operation", file=sys.stderr
-        )
+        print("❌ Memory Error: Not enough memory to complete operation", file=sys.stderr)
         print(
             "💡 Try using TaxSQLite instead of TaxDb for better memory efficiency",
             file=sys.stderr,
@@ -173,9 +169,7 @@ def _params_parser():
         action="store_true",
         help="Use fast mode with pre-cached data (requires prior fast caching)",
     )
-    trace_parser.add_argument(
-        "taxid", help="NCBI taxonomy ID (e.g., 9606 for human)", type=int
-    )
+    trace_parser.add_argument("taxid", help="NCBI taxonomy ID (e.g., 9606 for human)", type=int)
 
     # Search command
     sname_parser = sub_parsers.add_parser(
@@ -241,13 +235,9 @@ def main(args: list[str] | None = None) -> int:
         try:
             taxdb_path = Path(parsed_args.taxdb).resolve()
             if not taxdb_path.exists():
-                raise ValidationError(
-                    "taxdb_path", str(taxdb_path), "existing directory"
-                )
+                raise ValidationError("taxdb_path", str(taxdb_path), "existing directory")
             if not taxdb_path.is_dir():
-                raise ValidationError(
-                    "taxdb_path", str(taxdb_path), "directory (not file)"
-                )
+                raise ValidationError("taxdb_path", str(taxdb_path), "directory (not file)")
         except Exception as e:
             return handle_error(e)
 
@@ -330,14 +320,10 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
                         raise ValueError(f"Invalid taxid: {taxid}")
                     all_taxids.add(taxid)
                 except ValueError:
-                    raise ValidationError(
-                        f"taxid_file line {line_num}", line, "positive integer"
-                    )
+                    raise ValidationError(f"taxid_file line {line_num}", line, "positive integer")
 
         if not all_taxids:
-            raise ValidationError(
-                "taxid_file", str(taxid_file), "file with at least one valid taxid"
-            )
+            raise ValidationError("taxid_file", str(taxid_file), "file with at least one valid taxid")
 
         print(f"📊 Loaded {len(all_taxids):,} unique taxids from {line_num} lines")
 
@@ -352,9 +338,7 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
         print("🔍 Finding lineages for specified taxids...")
 
         kept_taxids = []
-        for taxid in tqdm(
-            taxdb._taxid2nodes.keys(), desc="Loop-over all taxids", ncols=80
-        ):
+        for taxid in tqdm(taxdb._taxid2nodes.keys(), desc="Loop-over all taxids", ncols=80):
             taxon = Taxon(taxid, taxdb)
             lineage_taxids = set(taxon.taxid_lineage)
             if lineage_taxids.intersection(all_taxids):
@@ -364,9 +348,7 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
         print(f"📊 Keeping {len(kept_taxids):,} total taxids (including lineages)")
 
         # Create filtered database
-        kept_taxid2nodes = {
-            k: v for k, v in taxdb._taxid2nodes.items() if k in kept_taxids
-        }
+        kept_taxid2nodes = {k: v for k, v in taxdb._taxid2nodes.items() if k in kept_taxids}
         # with open("kept_taxids.list", "w") as fout:
         #     for k, _ in kept_taxid2nodes.items():
         #         fout.write(f"{k}\n")
@@ -424,14 +406,8 @@ def _handle_search_command(args, taxdb_path: Path) -> int:
             for result in results:
                 try:
                     taxon = Taxon(int(result["taxid"]), taxdb)
-                    score_str = (
-                        f"({result['score']:.1f}%)"
-                        if float(result["score"]) < 100
-                        else ""
-                    )
-                    print(
-                        f"{result['taxid']:<10} {taxon.rank:<15} {result['name']} {score_str}"
-                    )
+                    score_str = f"({result['score']:.1f}%)" if float(result["score"]) < 100 else ""
+                    print(f"{result['taxid']:<10} {taxon.rank:<15} {result['name']} {score_str}")
                 except Exception as e:
                     logging.warning(f"Error displaying result {result['taxid']}: {e}")
         else:

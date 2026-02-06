@@ -164,9 +164,7 @@ class TaxonomyDatabase(ABC):
         self.close()
 
 
-def create_database(
-    taxdump_dir: Path | str, backend: str = "sqlite", **kwargs
-) -> TaxonomyDatabase:
+def create_database(taxdump_dir: Path | str, backend: str = "sqlite", **kwargs) -> TaxonomyDatabase:
     """
     Factory function to create appropriate database backend.
 
@@ -199,6 +197,4 @@ def create_database(
         return TaxDb(taxdump_dir, **kwargs)
     else:
         valid_backends = ["sqlite", "sql", "dict", "memory", "pickle"]
-        raise ValidationError(
-            "backend", backend, f"one of: {', '.join(valid_backends)}"
-        )
+        raise ValidationError("backend", backend, f"one of: {', '.join(valid_backends)}")

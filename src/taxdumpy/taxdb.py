@@ -51,9 +51,7 @@ class TaxDb(TaxonomyDatabase):
         "names.dmp",
     ]
 
-    def __init__(
-        self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False
-    ) -> None:
+    def __init__(self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False) -> None:
         # Call parent constructor
         super().__init__(taxdump_dir)
 
@@ -64,13 +62,9 @@ class TaxDb(TaxonomyDatabase):
         self._verbose = verbose
 
         # Set up file paths
-        self._taxdbf = [
-            self._taxdump_dir / filename for filename in self.REQUIRED_FILES
-        ]
+        self._taxdbf = [self._taxdump_dir / filename for filename in self.REQUIRED_FILES]
         self._mrgef, self._delnf, self._divsf, self._nodef, self._namef = self._taxdbf
-        self._pickle = self._taxdump_dir / (
-            "taxdump_fast.pickle" if fast else "taxdump.pickle"
-        )
+        self._pickle = self._taxdump_dir / ("taxdump_fast.pickle" if fast else "taxdump.pickle")
 
         # Check files exist before proceeding
         self._check_taxdump()
@@ -80,9 +74,7 @@ class TaxDb(TaxonomyDatabase):
                 logger.info(f"Loading taxonomy database from {self._taxdump_dir}")
             self._taxid2nodes, self._old2news, self._delnodes = self._load_taxdump()
             if self._verbose:
-                logger.info(
-                    f"Successfully loaded {len(self._taxid2nodes):,} taxonomy nodes"
-                )
+                logger.info(f"Successfully loaded {len(self._taxid2nodes):,} taxonomy nodes")
         except Exception as e:
             logger.error(f"Failed to load taxonomy database: {e}")
             raise
@@ -98,14 +90,10 @@ class TaxDb(TaxonomyDatabase):
 
         taxdump_path = Path(taxdump_dir)
         if not taxdump_path.exists():
-            raise ValidationError(
-                "taxdump_dir", str(taxdump_path), "existing directory path"
-            )
+            raise ValidationError("taxdump_dir", str(taxdump_path), "existing directory path")
 
         if not taxdump_path.is_dir():
-            raise ValidationError(
-                "taxdump_dir", str(taxdump_path), "directory (not file)"
-            )
+            raise ValidationError("taxdump_dir", str(taxdump_path), "directory (not file)")
 
     def _check_taxdump(self) -> None:
         """Check that required taxdump files exist and are readable."""
@@ -220,18 +208,14 @@ class TaxDb(TaxonomyDatabase):
                     try:
                         parts = line.split("\t")
                         if len(parts) < 3:
-                            logger.warning(
-                                f"Malformed line {line_num} in {self._mrgef.name}: {line}"
-                            )
+                            logger.warning(f"Malformed line {line_num} in {self._mrgef.name}: {line}")
                             continue
 
                         old_id, new_id = parts[0], parts[2]
                         old2new[int(old_id)] = int(new_id)
 
                     except (ValueError, IndexError) as e:
-                        logger.warning(
-                            f"Error parsing line {line_num} in {self._mrgef.name}: {line} ({e})"
-                        )
+                        logger.warning(f"Error parsing line {line_num} in {self._mrgef.name}: {line} ({e})")
                         continue
 
         except (OSError, UnicodeDecodeError) as e:
@@ -259,18 +243,14 @@ class TaxDb(TaxonomyDatabase):
                     try:
                         parts = line.split("\t")
                         if len(parts) < 3:
-                            logger.warning(
-                                f"Malformed line {line_num} in {self._divsf.name}: {line}"
-                            )
+                            logger.warning(f"Malformed line {line_num} in {self._divsf.name}: {line}")
                             continue
 
                         div_id, div_name = parts[0], parts[2]
                         div2codes[int(div_id)] = div_name
 
                     except (ValueError, IndexError) as e:
-                        logger.warning(
-                            f"Error parsing line {line_num} in {self._divsf.name}: {line} ({e})"
-                        )
+                        logger.warning(f"Error parsing line {line_num} in {self._divsf.name}: {line} ({e})")
                         continue
 
         except (OSError, UnicodeDecodeError) as e:
@@ -300,9 +280,7 @@ class TaxDb(TaxonomyDatabase):
                         del_taxids.add(taxid)
 
                     except (ValueError, IndexError) as e:
-                        logger.warning(
-                            f"Error parsing line {line_num} in {self._delnf.name}: {line} ({e})"
-                        )
+                        logger.warning(f"Error parsing line {line_num} in {self._delnf.name}: {line} ({e})")
                         continue
 
         except (OSError, UnicodeDecodeError) as e:
@@ -332,9 +310,7 @@ class TaxDb(TaxonomyDatabase):
                     try:
                         parts = line.split("\t")
                         if len(parts) < 7:
-                            logger.warning(
-                                f"Malformed line {line_num} in {self._namef.name}: {line}"
-                            )
+                            logger.warning(f"Malformed line {line_num} in {self._namef.name}: {line}")
                             continue
 
                         taxid = int(parts[0])
@@ -342,9 +318,7 @@ class TaxDb(TaxonomyDatabase):
                         name_class = parts[6].strip()
 
                         if not name:
-                            logger.warning(
-                                f"Empty name at line {line_num} in {self._namef.name}"
-                            )
+                            logger.warning(f"Empty name at line {line_num} in {self._namef.name}")
                             continue
 
                         if name_class == "scientific name":
@@ -356,9 +330,7 @@ class TaxDb(TaxonomyDatabase):
                         # Ignore other name classes
 
                     except (ValueError, IndexError) as e:
-                        logger.warning(
-                            f"Error parsing line {line_num} in {self._namef.name}: {line} ({e})"
-                        )
+                        logger.warning(f"Error parsing line {line_num} in {self._namef.name}: {line} ({e})")
                         continue
 
         except (OSError, UnicodeDecodeError) as e:
@@ -393,14 +365,8 @@ class TaxDb(TaxonomyDatabase):
                     parent=old2news[parent] if parent in old_taxids else parent,
                     rank=rank,
                     name=sci_names[taxid],
-                    equal=(
-                        "|".join(eq_names[taxid]) if taxid in eq_names.keys() else None
-                    ),
-                    acronym=(
-                        "|".join(acr_names[taxid])
-                        if taxid in acr_names.keys()
-                        else None
-                    ),
+                    equal=("|".join(eq_names[taxid]) if taxid in eq_names.keys() else None),
+                    acronym=("|".join(acr_names[taxid]) if taxid in acr_names.keys() else None),
                     division=div2codes.get(divid, f"UNKNOWN_{divid}"),
                 )
 
@@ -409,9 +375,7 @@ class TaxDb(TaxonomyDatabase):
         cur_taxids = set(taxid2nodes.keys())
         overlap = old_taxids.intersection(cur_taxids)
         if overlap:
-            raise TaxDbError(
-                f"Database integrity error: Current taxids have legacy taxids: {sorted(overlap)}"
-            )
+            raise TaxDbError(f"Database integrity error: Current taxids have legacy taxids: {sorted(overlap)}")
 
         return taxid2nodes, old2news, del_taxids
 
@@ -523,27 +487,19 @@ class TaxDb(TaxonomyDatabase):
 
         try:
             # Perform fuzzy search
-            results = process.extract(
-                query.strip(), self.all_names, scorer=fuzz.WRatio, limit=limit
-            )
+            results = process.extract(query.strip(), self.all_names, scorer=fuzz.WRatio, limit=limit)
 
             # Format results
             formatted_results = []
             for name, score, _ in results:
                 try:
                     taxid = self.name2taxid[name]
-                    formatted_results.append(
-                        {"name": name, "taxid": taxid, "score": score}
-                    )
+                    formatted_results.append({"name": name, "taxid": taxid, "score": score})
                 except KeyError:
-                    logger.warning(
-                        f"Name '{name}' found in search but not in name2taxid mapping"
-                    )
+                    logger.warning(f"Name '{name}' found in search but not in name2taxid mapping")
                     continue
 
-            logger.debug(
-                f"Fuzzy search for '{query}' returned {len(formatted_results)} results"
-            )
+            logger.debug(f"Fuzzy search for '{query}' returned {len(formatted_results)} results")
             return formatted_results
 
         except Exception as e:
@@ -572,9 +528,7 @@ class TaxDb(TaxonomyDatabase):
                     node = self.get_node(tid)
                     # Highlight matching text
                     col = re.sub(query, m_color, name, flags=re.IGNORECASE)
-                    print(
-                        f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}"
-                    )
+                    print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
                 except Exception as e:
                     logger.warning(f"Error displaying result for taxid {tid}: {e}")
 

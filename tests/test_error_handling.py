@@ -85,9 +85,7 @@ class TestTaxDbValidation:
 
     def test_invalid_taxdump_dir_none(self):
         """Test TaxDb with None directory."""
-        with pytest.raises(
-            Exception
-        ) as exc_info:  # May be TypeError instead of ValidationError
+        with pytest.raises(Exception) as exc_info:  # May be TypeError instead of ValidationError
             TaxDb(None)
         # Just ensure an error is raised for None input
         assert exc_info.value is not None
@@ -144,10 +142,7 @@ class TestTaxDbFileHandling:
 
         with pytest.raises(TaxdumpFileError) as exc_info:
             TaxDb(temp_dir)
-        assert (
-            "corrupted" in str(exc_info.value).lower()
-            or "invalid format" in str(exc_info.value).lower()
-        )
+        assert "corrupted" in str(exc_info.value).lower() or "invalid format" in str(exc_info.value).lower()
 
     def test_empty_taxdump_files(self, temp_dir):
         """Test behavior with empty taxdump files."""
@@ -241,10 +236,7 @@ class TestTaxDbNodeRetrieval:
         with pytest.raises(TaxidError) as exc_info:
             sample_taxdb.get_node(999999999)
         assert "not found" in str(exc_info.value).lower()
-        assert (
-            "suggestion" in str(exc_info.value).lower()
-            or "try" in str(exc_info.value).lower()
-        )
+        assert "suggestion" in str(exc_info.value).lower() or "try" in str(exc_info.value).lower()
 
     def test_get_node_legacy_taxid_suggestions(self, sample_taxdb, sample_taxids):
         """Test that legacy taxid mapping works and provides info."""
@@ -300,9 +292,7 @@ class TestFunctionValidation:
         with pytest.raises(Exception):  # Should raise TaxRankError or AssertionError
             upper_rank_id(taxon, sample_taxdb, "invalid_rank")
 
-    def test_upper_rank_id_non_canonical_current_rank(
-        self, sample_taxdb, sample_taxids
-    ):
+    def test_upper_rank_id_non_canonical_current_rank(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id with non-canonical current rank."""
         # Get a taxon with non-canonical rank (clade)
         clade_taxon = Taxon(6072, sample_taxdb)  # Eumetazoa (clade)
@@ -362,9 +352,7 @@ class TestRobustFileHandling:
         # Create a file with invalid UTF-8
         nodes_file = temp_dir / "nodes.dmp"
         with open(nodes_file, "wb") as f:
-            f.write(
-                b"1\t|\t1\t|\tno rank\t|\t\xff\xfe\t|\t8\t|\t0\t|\t1\t|\t0\t|\t0\t|\t0\t|\t0\t|\t0\t|\t\t|\n"
-            )
+            f.write(b"1\t|\t1\t|\tno rank\t|\t\xff\xfe\t|\t8\t|\t0\t|\t1\t|\t0\t|\t0\t|\t0\t|\t0\t|\t0\t|\t\t|\n")
 
         # Create other required files
         for filename in ["merged.dmp", "delnodes.dmp", "division.dmp", "names.dmp"]:

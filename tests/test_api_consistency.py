@@ -110,9 +110,7 @@ class TestFactoryFunction:
 class TestPolymorphicBehavior:
     """Test that both backends behave identically."""
 
-    def test_get_node_consistent_signature(
-        self, backend, sample_taxdump_dir, sample_taxids
-    ):
+    def test_get_node_consistent_signature(self, backend, sample_taxdump_dir, sample_taxids):
         """Test get_node method consistency."""
         db = create_database(sample_taxdump_dir, backend)
 
@@ -182,9 +180,7 @@ class TestPolymorphicBehavior:
         # Test name2taxid property
         name2taxid = db.name2taxid
         assert isinstance(name2taxid, dict)
-        assert all(
-            isinstance(k, str) and isinstance(v, int) for k, v in name2taxid.items()
-        )
+        assert all(isinstance(k, str) and isinstance(v, int) for k, v in name2taxid.items())
 
         # Test delnodes property
         delnodes = db.delnodes
@@ -245,9 +241,7 @@ class TestErrorHandlingConsistency:
         if hasattr(db, "close"):
             db.close()
 
-    def test_error_message_format_consistency(
-        self, backend, sample_taxdump_dir, sample_taxids
-    ):
+    def test_error_message_format_consistency(self, backend, sample_taxdump_dir, sample_taxids):
         """Test that error messages have consistent format."""
         db = create_database(sample_taxdump_dir, backend)
 
@@ -311,9 +305,7 @@ class TestBackwardCompatibility:
 
         db2.close()
 
-    def test_existing_method_signatures_preserved(
-        self, sample_taxdump_dir, sample_taxids
-    ):
+    def test_existing_method_signatures_preserved(self, sample_taxdump_dir, sample_taxids):
         """Test that existing method signatures are preserved."""
         db = TaxDb(sample_taxdump_dir)
 
@@ -378,9 +370,7 @@ def test_end_to_end_consistency(sample_taxdump_dir, sample_taxids):
             search_results = db._rapid_fuzz("Homo sapiens", limit=3)
             if backend_name == "dict":
                 assert len(search_results) > 0
-                assert any(
-                    result["name"] == "Homo sapiens" for result in search_results
-                )
+                assert any(result["name"] == "Homo sapiens" for result in search_results)
             # Note: SQLite backend _rapid_fuzz is not fully implemented
 
             # 3. Check database properties

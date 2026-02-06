@@ -91,9 +91,7 @@ class TestTaxSQLite:
         conn = sample_taxsqlite._conn
 
         # Check that tables exist
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
 
         table_names = [table[0] for table in tables]
         assert "nodes" in table_names
@@ -105,9 +103,7 @@ class TestTaxSQLite:
         conn = sample_taxsqlite._conn
 
         # Check that indexes exist
-        indexes = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index'"
-        ).fetchall()
+        indexes = conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
 
         index_names = [idx[0] for idx in indexes]
         assert any("names" in idx for idx in index_names)
@@ -136,9 +132,7 @@ class TestTaxSQLite:
         conn = sample_taxsqlite._conn
 
         # Get scientific name for human
-        result = conn.execute(
-            "SELECT name FROM names WHERE taxid = 9606 AND name_class = 'scientific name'"
-        ).fetchone()
+        result = conn.execute("SELECT name FROM names WHERE taxid = 9606 AND name_class = 'scientific name'").fetchone()
 
         assert result is not None
         assert result[0] == "Homo sapiens"

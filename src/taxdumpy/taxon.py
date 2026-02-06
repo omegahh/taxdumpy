@@ -102,11 +102,7 @@ class Taxon:
 
     @property
     def species_taxid(self) -> int:
-        return (
-            self.taxid_lineage[self.rank_lineage.index("species")]
-            if self.has_species_level
-            else 0
-        )
+        return self.taxid_lineage[self.rank_lineage.index("species")] if self.has_species_level else 0
 
     @property
     def taxid_lineage(self) -> list[int]:

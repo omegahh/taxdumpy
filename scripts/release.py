@@ -14,18 +14,16 @@ Usage:
 """
 
 import argparse
+import re
 import subprocess
 import sys
-import re
 from pathlib import Path
 
 
 def run_command(cmd, check=True, capture_output=False):
     """Run a shell command."""
     print(f"Running: {cmd}")
-    result = subprocess.run(
-        cmd, shell=True, check=check, capture_output=capture_output, text=True
-    )
+    result = subprocess.run(cmd, shell=True, check=check, capture_output=capture_output, text=True)
     if capture_output:
         return result.stdout.strip()
     return result
@@ -129,15 +127,9 @@ def upload_to_pypi(test=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Release taxdumpy package")
-    parser.add_argument(
-        "--version", required=True, help="Version to release (e.g., 1.2.3)"
-    )
-    parser.add_argument(
-        "--test", action="store_true", help="Upload to Test PyPI instead"
-    )
-    parser.add_argument(
-        "--upload", action="store_true", help="Upload to PyPI after building"
-    )
+    parser.add_argument("--version", required=True, help="Version to release (e.g., 1.2.3)")
+    parser.add_argument("--test", action="store_true", help="Upload to Test PyPI instead")
+    parser.add_argument("--upload", action="store_true", help="Upload to PyPI after building")
     parser.add_argument("--skip-tests", action="store_true", help="Skip running tests")
 
     args = parser.parse_args()

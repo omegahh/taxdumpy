@@ -59,9 +59,7 @@ class TaxSQLite(TaxonomyDatabase):
             self._conn.close()
 
     def _check_tables(self) -> bool:
-        c = self._conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' and name='nodes'"
-        )
+        c = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' and name='nodes'")
         return c.fetchone() is not None
 
     def __repr__(self):
@@ -151,10 +149,7 @@ class TaxSQLite(TaxonomyDatabase):
     def all_names(self) -> list[str]:
         # Loading all scientific names
         all_names = [
-            row["name"]
-            for row in self._conn.execute(
-                "SELECT name FROM names WHERE name_class='scientific name'"
-            )
+            row["name"] for row in self._conn.execute("SELECT name FROM names WHERE name_class='scientific name'")
         ]
         return all_names
 
@@ -163,9 +158,7 @@ class TaxSQLite(TaxonomyDatabase):
         # create name->taxid map
         name2taxid = {
             row["name"]: row["taxid"]
-            for row in self._conn.execute(
-                "SELECT taxid,name FROM names WHERE name_class='scientific name'"
-            )
+            for row in self._conn.execute("SELECT taxid,name FROM names WHERE name_class='scientific name'")
         }
         return name2taxid
 
@@ -175,9 +168,7 @@ class TaxSQLite(TaxonomyDatabase):
 
     @cached_property
     def max_taxid_strlen(self) -> int:
-        max_taxid = self._conn.execute(
-            "SELECT MAX(taxid) AS max_taxid FROM nodes"
-        ).fetchone()["max_taxid"]
+        max_taxid = self._conn.execute("SELECT MAX(taxid) AS max_taxid FROM nodes").fetchone()["max_taxid"]
         return len(str(max_taxid))
 
     @cached_property
@@ -243,9 +234,7 @@ class TaxSQLite(TaxonomyDatabase):
         original_taxid = validated_taxid
 
         # Handle legacy/merged taxids
-        r1 = self._conn.execute(
-            "SELECT newtid FROM merged WHERE oldtid=?", (validated_taxid,)
-        ).fetchone()
+        r1 = self._conn.execute("SELECT newtid FROM merged WHERE oldtid=?", (validated_taxid,)).fetchone()
         if r1:
             validated_taxid = r1["newtid"]
 
@@ -257,9 +246,7 @@ class TaxSQLite(TaxonomyDatabase):
                 suggestion="Check NCBI taxonomy for updated taxid or use search function",
             )
 
-        r = self._conn.execute(
-            "SELECT * FROM nodes WHERE taxid=?", (validated_taxid,)
-        ).fetchone()
+        r = self._conn.execute("SELECT * FROM nodes WHERE taxid=?", (validated_taxid,)).fetchone()
         if not r:
             # Try to find similar taxids for suggestions
             suggestion = self._suggest_similar_taxids(validated_taxid)
@@ -345,22 +332,16 @@ class TaxSQLite(TaxonomyDatabase):
 
         try:
             # Perform fuzzy search
-            results = process.extract(
-                query.strip(), self.all_names, scorer=fuzz.WRatio, limit=limit
-            )
+            results = process.extract(query.strip(), self.all_names, scorer=fuzz.WRatio, limit=limit)
 
             # Format results
             formatted_results = []
             for name, score, _ in results:
                 try:
                     taxid = self.name2taxid[name]
-                    formatted_results.append(
-                        {"name": name, "taxid": taxid, "score": score}
-                    )
+                    formatted_results.append({"name": name, "taxid": taxid, "score": score})
                 except KeyError:
-                    logger.warning(
-                        f"Name '{name}' found in search but not in name2taxid mapping"
-                    )
+                    logger.warning(f"Name '{name}' found in search but not in name2taxid mapping")
                     continue
 
             return formatted_results
@@ -392,9 +373,7 @@ class TaxSQLite(TaxonomyDatabase):
                     node = self.get_node(tid)
                     # Highlight matching text
                     col = re.sub(query, m_color, name, flags=re.IGNORECASE)
-                    print(
-                        f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}"
-                    )
+                    print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
                 except Exception as e:
                     logger.warning(f"Error displaying result for taxid {tid}: {e}")
                     continue
