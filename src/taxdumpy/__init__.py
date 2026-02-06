@@ -21,6 +21,7 @@ from taxdumpy.functions import (
     get_rank_distance,
     get_rank_or_closest,
     get_rank_taxid,
+    group_taxids_by_rank,
     upper_rank_id,
 )
 from taxdumpy.taxdb import TaxDb
@@ -54,4 +55,5 @@ __all__ = [
     "get_all_ranks",
     "find_rank_in_lineage",
     "get_rank_distance",
+    "group_taxids_by_rank",
 ]

@@ -9,6 +9,7 @@ from taxdumpy.functions import (
     LEVEL2RANK,
     RANK2LEVEL,
     RANKNAMES,
+    group_taxids_by_rank,
     upper_rank_id,
 )
 
@@ -227,3 +228,55 @@ class TestFunctions:
         from taxdumpy import RC
 
         assert RC("S") == RC(2048)
+
+    def test_group_taxids_by_rank_family(self, sample_taxdb, sample_taxids):
+        """Test grouping taxids by family."""
+        taxids = [sample_taxids["human"], sample_taxids["homo"]]
+        groups = group_taxids_by_rank(taxids, "family", sample_taxdb)
+
+        assert isinstance(groups, dict)
+        # Both should be in Hominidae (9604)
+        assert 9604 in groups
+        assert sample_taxids["human"] in groups[9604]
+        assert sample_taxids["homo"] in groups[9604]
+
+    def test_group_taxids_by_rank_genus(self, sample_taxdb, sample_taxids):
+        """Test grouping taxids by genus."""
+        taxids = [sample_taxids["human"], sample_taxids["homo"]]
+        groups = group_taxids_by_rank(taxids, "genus", sample_taxdb)
+
+        assert isinstance(groups, dict)
+        # Both should be in Homo (9605)
+        assert 9605 in groups
+        assert sample_taxids["human"] in groups[9605]
+        assert sample_taxids["homo"] in groups[9605]
+
+    def test_group_taxids_by_rank_fallback(self, sample_taxdb, sample_taxids):
+        """Test that grouping falls back to closest ancestor when exact rank missing."""
+        # Human has F1 (subfamily) between G and F, so grouping by family should work
+        taxids = [sample_taxids["human"]]
+        groups = group_taxids_by_rank(taxids, "family", sample_taxdb)
+
+        assert len(groups) == 1
+        # Should find family (F) not subfamily (F1)
+        group_taxid = list(groups.keys())[0]
+        taxon = Taxon(group_taxid, sample_taxdb)
+        assert taxon.rank == "family"
+
+    def test_group_taxids_by_rank_invalid_rank(self, sample_taxdb, sample_taxids):
+        """Test that invalid rank raises TaxRankError."""
+        from taxdumpy import TaxRankError
+
+        taxids = [sample_taxids["human"]]
+        with pytest.raises(TaxRankError):
+            group_taxids_by_rank(taxids, "invalid_rank", sample_taxdb)
+
+    def test_group_taxids_by_rank_empty(self, sample_taxdb):
+        """Test grouping with empty input."""
+        groups = group_taxids_by_rank([], "family", sample_taxdb)
+        assert groups == {}
+
+    def test_group_taxids_by_rank_unknown_taxid(self, sample_taxdb):
+        """Test that unknown taxids are skipped."""
+        groups = group_taxids_by_rank([999999999], "family", sample_taxdb)
+        assert groups == {}

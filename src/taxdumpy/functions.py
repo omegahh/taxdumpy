@@ -353,3 +353,71 @@ def get_rank_distance(
     level2 = RANKNAMES.index(rank2)
 
     return abs(level1 - level2)
+
+
+def group_taxids_by_rank(
+    taxids: list[int],
+    rank: str,
+    taxdb: TaxDb,
+) -> dict[int, list[int]]:
+    """
+    Group taxids by a target rank, using closest ancestor if exact rank is missing.
+
+    For each taxid, finds the taxid at the target rank level. If the exact rank
+    is missing, falls back to the closest ancestor (lowest RC > target).
+
+    Args:
+        taxids: List of taxids to group
+        rank: Target rank name ('species', 'genus', 'family', 'order', 'class',
+              'phylum', 'superkingdom')
+        taxdb: TaxDb instance
+
+    Returns:
+        Dictionary mapping group taxid -> list of input taxids belonging to that group
+
+    Example:
+        >>> taxdb = TaxDb("/path/to/taxdump")
+        >>> species_taxids = [9606, 9598, 9597]
+        >>> by_family = group_taxids_by_rank(species_taxids, 'family', taxdb)
+        >>> # {9604: [9606, 9598, 9597]}  # All in Hominidae
+    """
+    from taxdumpy.basic import RC
+
+    # Map rank name to RC
+    rank_to_code = {
+        "species": "S",
+        "genus": "G",
+        "family": "F",
+        "order": "O",
+        "class": "C",
+        "phylum": "P",
+        "superkingdom": "D",
+        "kingdom": "K",
+        "root": "R",
+    }
+
+    if rank not in rank_to_code:
+        raise TaxRankError(rank, f"'{rank}' is not a valid rank for grouping", list(rank_to_code.keys()))
+
+    target_rc = RC(rank_to_code[rank])
+    groups: dict[int, list[int]] = {}
+
+    for taxid in taxids:
+        try:
+            taxon = Taxon(taxid, taxdb)
+        except Exception:
+            continue
+
+        # Find first RC <= target (exact match or closest ancestor)
+        group_taxid = None
+        for i, rc in enumerate(taxon.rankcode_lineage):
+            if rc <= target_rc:
+                group_taxid = taxon.taxid_lineage[i]
+                break
+
+        if group_taxid is not None:
+            if group_taxid not in groups:
+                groups[group_taxid] = []
+            groups[group_taxid].append(taxid)
+
+    return groups
