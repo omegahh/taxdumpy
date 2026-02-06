@@ -56,7 +56,8 @@ def run_tests():
 def check_code_quality():
     """Run code quality checks."""
     print("🎨 Checking code formatting...")
-    run_command("black --check src/ tests/")
+    run_command("ruff format --check src/ tests/")
+    run_command("ruff check src/ tests/")
     print("✅ Code formatting is correct")
 
 
