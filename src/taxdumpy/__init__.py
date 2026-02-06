@@ -3,6 +3,7 @@
 __version__ = "1.1.8"
 
 from taxdumpy.basic import (
+    RC,
     DatabaseCorruptionError,
     TaxDbError,
     TaxdumpFileError,
@@ -40,6 +41,8 @@ __all__ = [
     "TaxDb",
     "TaxSQLite",
     "Taxon",
+    # Rank code
+    "RC",
     # Factory functions
     "create_database",
     # Rank utility functions

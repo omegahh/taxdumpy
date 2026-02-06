@@ -4,7 +4,13 @@ import pytest
 
 from taxdumpy import Taxon
 from taxdumpy.basic import TaxRankError
-from taxdumpy.functions import LEVEL2RANK, RANK2LEVEL, RANKNAMES, upper_rank_id
+from taxdumpy.basic import RC
+from taxdumpy.functions import (
+    LEVEL2RANK,
+    RANK2LEVEL,
+    RANKNAMES,
+    upper_rank_id,
+)
 
 
 class TestFunctions:
@@ -140,3 +146,84 @@ class TestFunctions:
 
         # Should be the same function
         assert upper_rank_id is pkg_upper_rank_id
+
+    def test_rc_class(self):
+        """Test RC class for rank codes."""
+        # Test creation from string
+        assert str(RC("S")) == "S"
+        assert str(RC("S1")) == "S1"
+        assert str(RC("R")) == "R"
+
+        # Test creation from int
+        assert str(RC(2048)) == "S"
+        assert str(RC(2049)) == "S1"
+
+        # Test comparison
+        assert RC("R") < RC("S")
+        assert RC("F") < RC("F1")
+        assert RC("G") < RC("S")
+
+    def test_rankcode_lineage_property(self, sample_taxdb, sample_taxids):
+        """Test rankcode_lineage property on Taxon."""
+        human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
+        codes = human_taxon.rankcode_lineage
+
+        assert isinstance(codes, list)
+        assert len(codes) > 0
+        # Should be RC objects
+        assert all(isinstance(c, RC) for c in codes)
+        # Should start with S for species (taxon->root order)
+        assert codes[0] == RC("S")
+        # Should contain G for genus
+        assert RC("G") in codes
+
+    def test_rankcode_lineage_intermediate_ranks(self, sample_taxdb, sample_taxids):
+        """Test that intermediate ranks get depth numbers."""
+        human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
+        codes = human_taxon.rankcode_lineage
+
+        # Human lineage has many intermediate ranks, should have codes like F1, O1, etc.
+        has_depth_codes = any((c & 0xFF) > 0 for c in codes)  # depth > 0
+        assert has_depth_codes
+
+    def test_rankcode_lineage_root(self, sample_taxdb, sample_taxids):
+        """Test that root (taxid 1) is 'R' not 'R1'."""
+        human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
+        codes = human_taxon.rankcode_lineage
+
+        # Last element should be R for root (taxon->root order)
+        assert codes[-1] == RC("R")
+
+    def test_rankcode_comparable(self, sample_taxdb, sample_taxids):
+        """Test that RC objects are comparable."""
+        human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
+        codes = human_taxon.rankcode_lineage
+
+        # R should be less than S (higher rank = lower value)
+        assert RC("R") < RC("S")
+        # F should be less than F1
+        assert RC("F") < RC("F1")
+        # Sorting should work
+        sorted_codes = sorted(codes)
+        assert sorted_codes[0] < sorted_codes[-1]
+
+    def test_mpa_repr_property(self, sample_taxdb, sample_taxids):
+        """Test mpa_repr property on Taxon."""
+        human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
+        mpa = human_taxon.mpa_repr
+
+        assert isinstance(mpa, str)
+        # Should contain species
+        assert "s__Homo_sapiens" in mpa
+        # Should contain genus
+        assert "g__Homo" in mpa
+        # Should use pipe separator
+        assert "|" in mpa
+        # Should start with domain
+        assert mpa.startswith("d__")
+
+    def test_rc_import(self):
+        """Test that RC can be imported from package."""
+        from taxdumpy import RC
+
+        assert RC("S") == RC(2048)
