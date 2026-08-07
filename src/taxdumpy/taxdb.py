@@ -526,8 +526,9 @@ class TaxDb(TaxonomyDatabase):
                 name = str(result["name"])
                 try:
                     node = self.get_node(tid)
-                    # Highlight matching text
-                    col = re.sub(query, m_color, name, flags=re.IGNORECASE)
+                    # Highlight matching text. The query is user input, so it
+                    # must be escaped before use as a regex pattern.
+                    col = re.sub(re.escape(query), m_color, name, flags=re.IGNORECASE)
                     print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
                 except Exception as e:
                     logger.warning(f"Error displaying result for taxid {tid}: {e}")

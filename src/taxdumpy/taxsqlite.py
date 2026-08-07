@@ -5,8 +5,10 @@ Created: 2025-06-30 19:51:00
 """
 
 import logging
+import os
 import re
 import sqlite3
+import tempfile
 from functools import cached_property
 from pathlib import Path
 
@@ -29,6 +31,11 @@ class TaxSQLite(TaxonomyDatabase):
         verbose: If True, print status messages during initialization (default: False)
     """
 
+    # Every table the query methods rely on. Checking all of them (rather than
+    # just `nodes`) means a cache built by an older version with a narrower
+    # schema is detected and rebuilt instead of failing later on first use.
+    REQUIRED_TABLES = ("nodes", "names", "merged", "delnodes")
+
     def __init__(self, taxdump_dir: Path | str, verbose: bool = False):
         # Call parent constructor
         super().__init__(taxdump_dir)
@@ -36,14 +43,47 @@ class TaxSQLite(TaxonomyDatabase):
         self._verbose = verbose
         self._db_path = self._taxdump_dir / "taxdump.sqlite"
 
+        if not self._db_path.exists():
+            self._create_database()
+
         # open a sqlite connection, and use row_factory for element access, r['name'] for example
         self._conn = sqlite3.connect(self._db_path)
         self._conn.row_factory = sqlite3.Row
         try:
             if not self._check_tables():
-                self._build_database()
+                # An existing file without the expected schema is unusable.
+                self._conn.close()
+                self._db_path.unlink()
+                self._create_database()
+                self._conn = sqlite3.connect(self._db_path)
+                self._conn.row_factory = sqlite3.Row
         except Exception:
-            self._conn.close()
+            self.close()
+            raise
+
+    def _create_database(self):
+        """Build the database at a temporary path, then move it into place.
+
+        `executescript` implicitly commits its DDL, so a failure partway
+        through the build cannot be rolled back. Building somewhere else and
+        renaming on success means an interrupted build never leaves a
+        half-populated database that later looks valid but answers nothing.
+        """
+        # mkstemp guarantees a unique name even when several processes build
+        # concurrently, including across hosts sharing the directory, where
+        # PIDs can repeat. Same directory, so the final replace stays atomic.
+        fd, tmp_name = tempfile.mkstemp(prefix=f"{self._db_path.name}.", suffix=".tmp", dir=self._db_path.parent)
+        os.close(fd)
+        tmp_path = Path(tmp_name)
+        conn = sqlite3.connect(tmp_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            self._build_database(conn)
+            conn.close()
+            os.replace(tmp_path, self._db_path)
+        except BaseException:
+            conn.close()
+            tmp_path.unlink(missing_ok=True)
             raise
 
     def __enter__(self):
@@ -59,8 +99,9 @@ class TaxSQLite(TaxonomyDatabase):
             self._conn.close()
 
     def _check_tables(self) -> bool:
-        c = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' and name='nodes'")
-        return c.fetchone() is not None
+        rows = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        present = {row[0] for row in rows}
+        return all(table in present for table in self.REQUIRED_TABLES)
 
     def __repr__(self):
         repr_str = f"Taxdump (SQLite) Database from {u_str(self._taxdump_dir)}\n"
@@ -75,11 +116,11 @@ class TaxSQLite(TaxonomyDatabase):
         """Return number of taxonomy nodes in database."""
         return self._conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
 
-    def _build_database(self):
+    def _build_database(self, conn: sqlite3.Connection):
         try:
             if self._verbose:
                 print("Build up TAXDUMP SQLite Database...")
-            c = self._conn.cursor()
+            c = conn.cursor()
             # 1) Create Tables
             c.executescript(
                 """
@@ -98,6 +139,9 @@ class TaxSQLite(TaxonomyDatabase):
                     CREATE TABLE merged (
                         oldtid INTEGER PRIMARY KEY,
                         newtid INTEGER NOT NULL
+                        );
+                    CREATE TABLE delnodes (
+                        taxid INTEGER PRIMARY KEY
                         );
                     CREATE INDEX idx_names_name        ON names(name);
                     CREATE INDEX idx_names_taxid       ON names(taxid);
@@ -140,9 +184,13 @@ class TaxSQLite(TaxonomyDatabase):
             # 5) Insert Legacy Taxids
             rows_legacy = [(old, new) for old, new in old2new.items()]
             c.executemany("INSERT INTO merged VALUES (?,?)", rows_legacy)
-            self._conn.commit()
+
+            # 6) Insert Deleted Taxids, so the database is self-contained and
+            #    does not need the .dmp files at query time.
+            c.executemany("INSERT INTO delnodes VALUES (?)", [(t,) for t in self._import_delnodes()])
+            conn.commit()
         except Exception:
-            self._conn.rollback()
+            conn.rollback()
             raise
 
     @cached_property
@@ -164,7 +212,7 @@ class TaxSQLite(TaxonomyDatabase):
 
     @cached_property
     def delnodes(self) -> set[int]:
-        return self._import_delnodes()
+        return {row[0] for row in self._conn.execute("SELECT taxid FROM delnodes")}
 
     @cached_property
     def max_taxid_strlen(self) -> int:
@@ -371,8 +419,9 @@ class TaxSQLite(TaxonomyDatabase):
                 name = str(result["name"])
                 try:
                     node = self.get_node(tid)
-                    # Highlight matching text
-                    col = re.sub(query, m_color, name, flags=re.IGNORECASE)
+                    # Highlight matching text. The query is user input, so it
+                    # must be escaped before use as a regex pattern.
+                    col = re.sub(re.escape(query), m_color, name, flags=re.IGNORECASE)
                     print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
                 except Exception as e:
                     logger.warning(f"Error displaying result for taxid {tid}: {e}")

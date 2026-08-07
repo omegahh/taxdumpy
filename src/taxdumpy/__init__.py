@@ -1,6 +1,6 @@
 """Taxdumpy: A Python package for parsing NCBI taxdump database and resolving taxonomy lineage."""
 
-__version__ = "1.2.1"
+__version__ = "1.3.0"
 
 from taxdumpy.basic import (
     RC,
@@ -14,6 +14,9 @@ from taxdumpy.basic import (
 )
 from taxdumpy.database import TaxonomyDatabase, create_database
 from taxdumpy.functions import (
+    build_children_index,
+    descendant_nodes,
+    descendants,
     find_rank_in_lineage,
     get_all_ranks,
     get_canonical_ranks,
@@ -56,4 +59,8 @@ __all__ = [
     "find_rank_in_lineage",
     "get_rank_distance",
     "group_taxids_by_rank",
+    # Subtree traversal
+    "descendants",
+    "descendant_nodes",
+    "build_children_index",
 ]

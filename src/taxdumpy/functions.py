@@ -4,24 +4,31 @@ Author: Hao Hong (omeganju@gmail.com)
 Created: 2025-07-06 17:07:57
 """
 
-from typing import Literal
+from typing import Literal, get_args
+from weakref import WeakKeyDictionary
 
-from taxdumpy.basic import TaxRankError
+from taxdumpy.basic import TaxDbError, TaxRankError, ValidationError
+from taxdumpy.database import TaxonomyDatabase
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxon import Taxon
+from taxdumpy.taxsqlite import TaxSQLite
 
 # from taxdumpy.taxsqlite import TaxSQLite
 
-RANKNAMES = [
+# Canonical phylogenetic ranks, ordered low to high. Single source of truth:
+# RANKNAMES, RANK2LEVEL and LEVEL2RANK are all derived from RankName.
+RankName = Literal[
     "species",
     "genus",
     "family",
     "order",
     "class",
     "phylum",
+    "kingdom",
     "superkingdom",
     "realm",
 ]
+RANKNAMES: list[str] = list(get_args(RankName))
 RANK2LEVEL = {k: i for i, k in enumerate(RANKNAMES)}
 LEVEL2RANK = {i: k for i, k in enumerate(RANKNAMES)}
 
@@ -64,16 +71,7 @@ EXTENDED_RANKS = [
 def upper_rank_id(
     tax: Taxon,
     taxdb: TaxDb,
-    rank: Literal[
-        "species",
-        "genus",
-        "family",
-        "order",
-        "class",
-        "phylum",
-        "superkingdom",
-        "realm",
-    ],
+    rank: RankName,
 ) -> int:
     curr_rank = tax.rank
     if curr_rank not in RANKNAMES:
@@ -421,3 +419,148 @@ def group_taxids_by_rank(
             groups[group_taxid].append(taxid)
 
     return groups
+
+
+# Parent -> children index, keyed weakly by database so a closed or discarded
+# database does not keep its index (potentially millions of entries) alive.
+_CHILDREN_CACHE: "WeakKeyDictionary[TaxonomyDatabase, dict[int, list[int]]]" = WeakKeyDictionary()
+
+
+def build_children_index(taxdb: TaxonomyDatabase) -> dict[int, list[int]]:
+    """Build (and cache) a parent -> children index for a database.
+
+    The taxdump stores only child -> parent, so descending the tree requires
+    inverting that mapping. The inversion costs one pass over every node; it is
+    cached per database so repeated `descendants` calls are index lookups.
+
+    Deleted and merged taxids are excluded here rather than during traversal,
+    so the filtering cost is paid once instead of per query.
+
+    Args:
+        taxdb: Any taxonomy database backend
+
+    Returns:
+        Mapping of parent taxid to its list of child taxids. Treat as
+        read-only: the same object is shared by every caller.
+    """
+    cached = _CHILDREN_CACHE.get(taxdb)
+    if cached is not None:
+        return cached
+
+    children: dict[int, list[int]] = {}
+    excluded = taxdb.delnodes
+
+    if isinstance(taxdb, TaxDb):
+        # Iterate the in-memory dict directly; get_node per taxid would add
+        # millions of calls and validation round-trips for no benefit.
+        excluded = excluded | taxdb._old2news.keys()
+        for taxid, node in taxdb._taxid2nodes.items():
+            parent = node.parent
+            if parent == taxid or taxid in excluded:
+                continue
+            if parent in children:
+                children[parent].append(taxid)
+            else:
+                children[parent] = [taxid]
+    elif isinstance(taxdb, TaxSQLite):
+        # One sequential scan of the nodes table beats per-taxid queries.
+        conn = taxdb._conn
+        excluded = excluded | {row[0] for row in conn.execute("SELECT oldtid FROM merged")}
+        for taxid, parent in conn.execute("SELECT taxid, parent FROM nodes"):
+            if parent == taxid or taxid in excluded:
+                continue
+            if parent in children:
+                children[parent].append(taxid)
+            else:
+                children[parent] = [taxid]
+    else:
+        raise TaxDbError(
+            f"Cannot build a children index for {type(taxdb).__name__}",
+            "descendants() supports the TaxDb and TaxSQLite backends",
+        )
+
+    _CHILDREN_CACHE[taxdb] = children
+    return children
+
+
+def descendants(taxdb: TaxonomyDatabase, taxid: int | str, max_depth: int | None = None) -> list[int]:
+    """Get all taxids in the subtree below a taxid.
+
+    Walks *down* the taxonomy tree: the inverse of lineage tracing. The result
+    is every node that has `taxid` somewhere among its ancestors.
+
+    The first call on a database builds a parent -> children index (one pass
+    over all nodes); subsequent calls reuse it, so a query costs time
+    proportional to the size of the returned subtree rather than to the
+    database. Traversal is iterative, so deep trees cannot exhaust the stack.
+
+    Deleted and superseded (merged) taxids are excluded from results. A merged
+    `taxid` argument resolves to its current taxid first, matching `get_node`.
+
+    Args:
+        taxdb: Any taxonomy database backend
+        taxid: NCBI taxonomy ID (integer or string)
+        max_depth: Levels to descend. 1 returns direct children only, 2 also
+            their children, and so on. None (default) returns the whole subtree.
+
+    Returns:
+        List of descendant taxids, excluding `taxid` itself. Empty for a leaf.
+        Ordered breadth-first, so shallower nodes come first.
+
+    Raises:
+        ValidationError: If taxid or max_depth is invalid
+        TaxidError: If taxid is not found or has been deleted
+
+    Example:
+        >>> descendants(taxdb, 561)  # genus Escherichia
+        [562, 208962, ...]
+        >>> descendants(taxdb, 561, max_depth=1)  # direct children only
+        [562, 208962]
+    """
+    if max_depth is not None:
+        if isinstance(max_depth, bool) or not isinstance(max_depth, int):
+            raise ValidationError("max_depth", type(max_depth).__name__, "integer or None")
+        if max_depth < 1:
+            raise ValidationError("max_depth", max_depth, "integer >= 1, or None")
+
+    # Resolves merged taxids and raises TaxidError for unknown/deleted ones.
+    root = taxdb.get_node(taxid).taxid
+
+    children = build_children_index(taxdb)
+    frontier = children.get(root)
+    if not frontier:
+        return []
+
+    result: list[int] = []
+    depth = 1
+    while frontier:
+        result.extend(frontier)
+        if max_depth is not None and depth >= max_depth:
+            break
+        next_frontier: list[int] = []
+        for node_taxid in frontier:
+            kids = children.get(node_taxid)
+            if kids:
+                next_frontier.extend(kids)
+        frontier = next_frontier
+        depth += 1
+
+    return result
+
+
+def descendant_nodes(taxdb: TaxonomyDatabase, taxid: int | str, max_depth: int | None = None) -> list:
+    """Get `Node` objects for the subtree below a taxid.
+
+    Convenience wrapper over `descendants` for callers that need rank, name or
+    division. Costs one `get_node` per descendant, so prefer `descendants` when
+    taxids alone will do.
+
+    Args:
+        taxdb: Any taxonomy database backend
+        taxid: NCBI taxonomy ID (integer or string)
+        max_depth: See `descendants`
+
+    Returns:
+        List of Node objects, excluding the node for `taxid` itself.
+    """
+    return [taxdb.get_node(t) for t in descendants(taxdb, taxid, max_depth)]
