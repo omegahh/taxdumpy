@@ -3,9 +3,25 @@
 from abc import ABC, abstractmethod
 from functools import cached_property
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Any, Callable, Dict, List, Set, TypeVar
 
 from taxdumpy.basic import Node, ValidationError
+
+_T = TypeVar("_T")
+
+
+def abstract_cached_property(func: Callable[[Any], _T]) -> "cached_property[_T]":
+    """Declare a `cached_property` that ABCMeta treats as abstract.
+
+    Stacking `@cached_property` over `@abstractmethod` does not work:
+    `cached_property` does not propagate `__isabstractmethod__`, so ABCMeta
+    never sees the member and silently stops enforcing it. Setting the flag
+    on the descriptor makes the contract real, while keeping the type a plain
+    `cached_property` so subclass implementations remain assignable.
+    """
+    prop = cached_property(func)
+    prop.__isabstractmethod__ = True  # type: ignore[attr-defined]
+    return prop
 
 
 class TaxonomyDatabase(ABC):
@@ -73,35 +89,30 @@ class TaxonomyDatabase(ABC):
         """
         pass
 
-    @cached_property
-    @abstractmethod
+    @abstract_cached_property
     def all_names(self) -> List[str]:
         """Get all scientific names in the database."""
-        pass
+        raise NotImplementedError
 
-    @cached_property
-    @abstractmethod
+    @abstract_cached_property
     def name2taxid(self) -> Dict[str, int]:
         """Get mapping from scientific names to taxids."""
-        pass
+        raise NotImplementedError
 
-    @cached_property
-    @abstractmethod
+    @abstract_cached_property
     def delnodes(self) -> Set[int]:
         """Get set of deleted taxids."""
-        pass
+        raise NotImplementedError
 
-    @cached_property
-    @abstractmethod
+    @abstract_cached_property
     def max_taxid_strlen(self) -> int:
         """Get maximum string length of taxids for formatting."""
-        pass
+        raise NotImplementedError
 
-    @cached_property
-    @abstractmethod
+    @abstract_cached_property
     def max_rank_strlen(self) -> int:
         """Get maximum string length of ranks for formatting."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def __len__(self) -> int:
