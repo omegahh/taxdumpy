@@ -14,6 +14,7 @@ _A high-performance Python toolkit for parsing NCBI Taxonomy databases with line
 - **Fast Parsing**: Optimized loading of NCBI taxdump files with pickle caching for ~3x speedup
 - **Dual Backends**: In-memory (`TaxDb`) for speed or SQLite (`TaxSQLite`) for memory efficiency
 - **Lineage Resolution**: Complete lineage tracing with automatic handling of merged/deleted nodes
+- **Subtree Traversal**: Walk *down* the tree with `descendants` — every taxid below a given one
 - **Rank Codes**: Comparable `RC` class for efficient rank-based operations and grouping
 - **Fuzzy Search**: Rapid approximate name matching using `rapidfuzz`
 - **Batch Grouping**: Group taxids by rank level with `group_taxids_by_rank`
@@ -62,7 +63,7 @@ print(human.rank_lineage)
 
 # Check taxonomic properties
 print(f"Rank: {human.rank}")           # species
-print(f"Division: {human.division}")   # Primates
+print(f"Division: {human.division}")   # PRI (division code, not full name)
 print(f"Is legacy: {human.is_legacy}") # False
 ```
 
@@ -71,22 +72,52 @@ print(f"Is legacy: {human.is_legacy}") # False
 ```python
 from taxdumpy import create_database, Taxon
 
-# Create database with preferred backend
-db = create_database(backend="sqlite", taxdump_dir="/path/to/taxdump")
+# taxdump_dir is the first positional argument
+db = create_database("/path/to/taxdump", backend="sqlite")
 # Or: backend="dict" for in-memory
 
 taxon = Taxon(9606, db)
 print(taxon.name)  # Homo sapiens
 ```
 
+### Subtree Traversal
+
+```python
+from taxdumpy import TaxDb, descendants
+
+taxdb = TaxDb("/path/to/taxdump")
+
+# Every taxid below genus Escherichia (transitively, not just children)
+descendants(taxdb, 561)
+# [562, 208962, 511145, ...]
+
+# Direct children only
+descendants(taxdb, 561, max_depth=1)
+
+# Deleted and merged taxids are excluded; the queried taxid itself is not
+# included. Combine with existing helpers to filter:
+species = [t for t in descendants(taxdb, 2) if taxdb.get_node(t).rank == "species"]
+```
+
+The first call builds a parent-to-children index in one pass over the database
+and caches it, so later queries cost time proportional to the subtree returned
+rather than to the database size.
+
 ### Fuzzy Search
 
 ```python
-# Search with typos and partial matches
+# Print formatted, highlighted matches to the console
+taxdb.fuzzy_search("Escherichia coli", limit=5)
+
+# Or get the matches as data
 results = taxdb._rapid_fuzz("Escherichia coli", limit=5)
 for match in results:
     print(f"{match['name']} (TaxID: {match['taxid']}, Score: {match['score']})")
 ```
+
+> `_rapid_fuzz` returns structured results but is private; only `fuzzy_search`
+> (which prints) is part of the stable API. If you need matches as data, pin your
+> version or open an issue.
 
 ### Rank Codes and Grouping
 
@@ -200,7 +231,7 @@ export TAXDB_PATH=~/.taxonkit
 from taxdumpy import TaxSQLite, Taxon
 
 # Use SQLite for memory-efficient storage
-db = TaxSQLite("/path/to/taxdump")  # Creates taxonomy.db in that directory
+db = TaxSQLite("/path/to/taxdump")  # Creates taxdump.sqlite in that directory
 
 # Same API as TaxDb
 taxon = Taxon(9606, db)
@@ -243,7 +274,7 @@ print(taxon.node.taxid) # Current/resolved taxid
 ### Exception Handling
 
 ```python
-from taxdumpy import TaxDb, Taxon, TaxidError, TaxRankError, TaxDbError
+from taxdumpy import TaxDb, Taxon, TaxidError, TaxRankError, upper_rank_id
 
 taxdb = TaxDb("/path/to/taxdump")
 
@@ -254,7 +285,8 @@ except TaxidError as e:
     # Includes suggestions for similar taxids
 
 try:
-    rank_id = upper_rank_id(9606, "invalid_rank", taxdb)
+    # Signature is (tax, taxdb, rank) — a Taxon, not a bare taxid
+    rank_id = upper_rank_id(Taxon(9606, taxdb), taxdb, "invalid_rank")
 except TaxRankError as e:
     print(f"Invalid rank: {e}")
     # Includes list of valid ranks
@@ -282,17 +314,22 @@ TaxSQLite(taxdump_dir: str)
 Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 
 # Properties
-.name: str               # Scientific name
-.rank: str               # Taxonomic rank
-.division: str           # NCBI division
-.parent: int             # Parent taxid
-.lineage: list[Node]     # Complete lineage as Node objects
-.name_lineage: list[str] # Names from taxid to root
-.rank_lineage: list[str] # Ranks from taxid to root
+.name: str                # Scientific name
+.rank: str                # Taxonomic rank
+.division: str            # NCBI division
+.parent: int              # Parent taxid
+.acronym: str | None      # Acronym, if any
+.node: Node               # Underlying node (resolved, if merged)
+.rc: RC                   # Rank code for this taxon
+.lineage: list[Node]      # Complete lineage as Node objects
+.name_lineage: list[str]  # Names from taxid to root
+.rank_lineage: list[str]  # Ranks from taxid to root
 .taxid_lineage: list[int] # Taxids from taxid to root
-.is_legacy: bool         # True if taxid was merged
-.has_species_level: bool # True if lineage contains species rank
-.species_taxid: int | None # Taxid at species level
+.rankcode_lineage: list[RC]  # Rank codes from taxid to root
+.mpa_repr: str            # MetaPhlAn-style lineage string
+.is_legacy: bool          # True if taxid was merged
+.has_species_level: bool  # True if lineage contains species rank
+.species_taxid: int       # Taxid at species level, or 0 if none
 ```
 
 **Factory Function**
@@ -301,21 +338,44 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 from taxdumpy import create_database
 
 # backend: "sqlite", "sql", "dict", "memory", or "pickle"
-db = create_database(backend="sqlite", taxdump_dir="/path/to/taxdump")
+db = create_database("/path/to/taxdump", backend="sqlite")
 ```
 
 ### Rank Functions
 
 ```python
 from taxdumpy import (
-    upper_rank_id,      # Get taxid at rank (raises TaxRankError if not found)
-    get_rank_taxid,     # Get taxid at rank (returns None if not found)
+    upper_rank_id,       # Get taxid at rank (raises TaxRankError if not found)
+    get_rank_taxid,      # Get taxid at rank (returns None if not found)
     get_canonical_ranks, # Get dict of all canonical ranks in lineage
-    get_closest_rank,   # Get closest rank at or above target level
-    get_rank_distance,  # Calculate distance between two ranks
-    RANKNAMES,          # 8 canonical ranks: species → realm
-    EXTENDED_RANKS,     # 30+ ranks including sub-ranks
+    get_closest_rank,    # Get closest rank at or above target level
+    get_rank_or_closest, # Same, returning the taxid alone
+    get_all_ranks,       # Every rank in the lineage as a dict
+    find_rank_in_lineage,# First of several candidate ranks present
+    get_rank_distance,   # Calculate distance between two ranks
+    group_taxids_by_rank,# Group a list of taxids at a given rank
 )
+
+# The rank tables live in taxdumpy.functions, not the package root:
+from taxdumpy.functions import RANKNAMES, EXTENDED_RANKS
+# RANKNAMES:      9 canonical ranks, species → realm
+# EXTENDED_RANKS: 31 ranks including sub-ranks
+```
+
+### Subtree Traversal
+
+```python
+from taxdumpy import descendants, descendant_nodes, build_children_index
+
+descendants(taxdb, taxid, max_depth=None) -> list[int]
+# Every taxid below `taxid`. Excludes `taxid` itself, and excludes deleted
+# and merged taxids. max_depth=1 gives direct children only. Breadth-first.
+
+descendant_nodes(taxdb, taxid, max_depth=None) -> list[Node]
+# Same, as Node objects. Costs one get_node per result.
+
+build_children_index(taxdb) -> dict[int, list[int]]
+# The parent-to-children index the above build and cache. Read-only.
 ```
 
 ### Exceptions
@@ -339,6 +399,10 @@ from taxdumpy import (
 - **Environment Variables**: Set `TAXDB_PATH` to avoid repeating database paths
 - **Choose Backend**: Use `TaxSQLite` for large datasets with limited memory
 - **Batch Operations**: Process multiple TaxIDs in batches rather than individual calls
+- **Subtree Queries**: Reuse one database instance so `descendants` shares its
+  cached children index. Building it costs one pass over the database
+  (~0.4 s for 1M nodes); every query afterwards is proportional to the subtree,
+  and small subtrees resolve in microseconds
 
 ## Use Cases
 
