@@ -4,7 +4,7 @@ Author: Hao Hong (omeganju@gmail.com)
 Created: 2025-07-06 17:07:57
 """
 
-from typing import Literal
+from typing import Literal, get_args
 
 from taxdumpy.basic import TaxRankError
 from taxdumpy.taxdb import TaxDb
@@ -12,16 +12,20 @@ from taxdumpy.taxon import Taxon
 
 # from taxdumpy.taxsqlite import TaxSQLite
 
-RANKNAMES = [
+# Canonical phylogenetic ranks, ordered low to high. Single source of truth:
+# RANKNAMES, RANK2LEVEL and LEVEL2RANK are all derived from RankName.
+RankName = Literal[
     "species",
     "genus",
     "family",
     "order",
     "class",
     "phylum",
+    "kingdom",
     "superkingdom",
     "realm",
 ]
+RANKNAMES: list[str] = list(get_args(RankName))
 RANK2LEVEL = {k: i for i, k in enumerate(RANKNAMES)}
 LEVEL2RANK = {i: k for i, k in enumerate(RANKNAMES)}
 
@@ -64,16 +68,7 @@ EXTENDED_RANKS = [
 def upper_rank_id(
     tax: Taxon,
     taxdb: TaxDb,
-    rank: Literal[
-        "species",
-        "genus",
-        "family",
-        "order",
-        "class",
-        "phylum",
-        "superkingdom",
-        "realm",
-    ],
+    rank: RankName,
 ) -> int:
     curr_rank = tax.rank
     if curr_rank not in RANKNAMES:
