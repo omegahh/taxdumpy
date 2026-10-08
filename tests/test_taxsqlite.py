@@ -68,6 +68,14 @@ class TestTaxSQLite:
         assert 3451490 in del_nodes
         assert 3451488 in del_nodes
 
+    def test_single_lookup_does_not_materialize_deleted_taxids(self, sample_taxsqlite):
+        assert sample_taxsqlite.get_node(9606).name == "Homo sapiens"
+        with pytest.raises(TaxidError, match="deleted"):
+            sample_taxsqlite.get_node(3451490)
+        assert "delnodes" not in sample_taxsqlite.__dict__
+        assert "Deleted nodes:" in repr(sample_taxsqlite)
+        assert "delnodes" not in sample_taxsqlite.__dict__
+
     def test_fuzzy_search(self, sample_taxsqlite):
         """Test fuzzy search functionality."""
         # This should print results, not return them

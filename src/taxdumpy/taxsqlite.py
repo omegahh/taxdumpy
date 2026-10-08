@@ -108,7 +108,7 @@ class TaxSQLite(TaxonomyDatabase):
         repr_str += f"\tImported nodes: {len(self):,}\n"
         merged_num = self._conn.execute("SELECT COUNT(*) FROM merged").fetchone()[0]
         repr_str += f"\tLegacy nodes:   {merged_num:,}\n"
-        delete_num = len(self.delnodes)
+        delete_num = self._conn.execute("SELECT COUNT(*) FROM delnodes").fetchone()[0]
         repr_str += f"\tDeleted nodes:  {delete_num:,}"
         return repr_str
 
@@ -287,7 +287,9 @@ class TaxSQLite(TaxonomyDatabase):
             validated_taxid = r1["newtid"]
 
         # Check if taxid has been deleted
-        if validated_taxid in self.delnodes:
+        # A CLI lookup needs one indexed membership check, not a Python set
+        # containing every deleted taxid. Keep delnodes lazy for bulk callers.
+        if self._conn.execute("SELECT 1 FROM delnodes WHERE taxid=?", (validated_taxid,)).fetchone():
             raise TaxidError(
                 original_taxid,
                 f"TaxID {original_taxid} has been deleted from NCBI taxonomy",
