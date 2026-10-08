@@ -21,7 +21,7 @@ from taxdumpy.basic import (
     TaxidError,
     ValidationError,
 )
-from taxdumpy.cache import atomic_pickle_dump
+from taxdumpy.cache import atomic_pickle_dump, cache_is_stale, source_signature
 from taxdumpy.database import TaxonomyDatabase
 
 # Set up logging
@@ -149,21 +149,49 @@ class TaxDb(TaxonomyDatabase):
         if self._pickle.is_file() and not self._rebuild:
             try:
                 with open(self._pickle, "rb") as fin:
-                    taxid2nodes, old2news, del_taxids = pickle.load(fin)
-                logger.debug(f"Loaded valid pickle file: {self._pickle}")
-                return taxid2nodes, old2news, del_taxids
-            except (pickle.PickleError, EOFError, OSError, ValueError, TypeError) as e:
+                    data = pickle.load(fin)
+                if isinstance(data, dict):
+                    if data.get("format_version") != 1:
+                        raise ValueError("Unsupported pickle cache version")
+                    taxid2nodes, old2news, del_taxids = data["nodes"], data["merged"], data["deleted"]
+                    signature = data["sources"]
+                else:
+                    # Accept the original three-part pickle format.
+                    taxid2nodes, old2news, del_taxids = data
+                    signature = None
+                if (
+                    not isinstance(taxid2nodes, dict)
+                    or not isinstance(old2news, dict)
+                    or not isinstance(del_taxids, set)
+                ):
+                    raise ValueError("Invalid pickle cache structure")
+                if not cache_is_stale(self._pickle, signature):
+                    self._source_signature = signature if signature is not None else source_signature(self._taxdump_dir)
+                    logger.debug(f"Loaded valid pickle file: {self._pickle}")
+                    return taxid2nodes, old2news, del_taxids
+                logger.info("Taxdump sources changed; rebuilding cache")
+            except (
+                pickle.PickleError,
+                EOFError,
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                ImportError,
+            ) as e:
                 logger.warning(f"Pickle file corrupted, will rebuild from source: {e}")
 
         if self._fast:
             raise TaxdumpFileError(
                 self._pickle.name,
-                "Fast cache is missing or unreadable",
+                "Fast cache is missing, stale or unreadable",
                 "Create it with taxdumpy cache -d PATH -f FILE before using fast=True",
             )
 
         # Validate source files only when a cache is absent or unusable.
         self._check_taxdump()
+        self._source_signature = source_signature(self._taxdump_dir)
         taxid2nodes, old2news, del_taxids = self._import_nodes()
         # Save the imported data to pickle for future use
         try:
@@ -383,7 +411,16 @@ class TaxDb(TaxonomyDatabase):
 
     def _save_pickle(self, taxid2nodes, old2news, del_taxids, *, path=None):
         """Save processed data to pickle file."""
-        atomic_pickle_dump(path or self._pickle, [taxid2nodes, old2news, del_taxids])
+        atomic_pickle_dump(
+            path or self._pickle,
+            {
+                "format_version": 1,
+                "sources": self._source_signature,
+                "nodes": taxid2nodes,
+                "merged": old2news,
+                "deleted": del_taxids,
+            },
+        )
         logger.debug(f"Saved pickle file: {self._pickle}")
 
     def dump_taxdump(self):

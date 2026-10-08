@@ -136,8 +136,8 @@ class TestTaxDb:
         with open(pickle_file, "rb") as f:
             data = pickle.load(f)
 
-        assert isinstance(data, list)
-        assert len(data) == 3  # taxid2nodes, old2new, delnodes
+        assert data["format_version"] == 1
+        assert data["nodes"][9606].name == "Homo sapiens"
 
     def test_missing_taxdump_files(self, temp_dir):
         """Test behavior with missing taxdump files."""

@@ -1,5 +1,6 @@
 """Cache replacement must preserve the previous database after a failed build."""
 
+import os
 import pickle
 from unittest.mock import patch
 
@@ -42,3 +43,40 @@ def test_explicit_rebuild_reports_write_failure(source_dir):
     with patch("taxdumpy.taxdb.atomic_pickle_dump", side_effect=PermissionError("read only")):
         with pytest.raises(PermissionError):
             TaxDb(source_dir, rebuild=True)
+
+
+@pytest.mark.parametrize("backend", [TaxDb, TaxSQLite])
+def test_changed_sources_refresh_cache_even_with_preserved_mtime(source_dir, backend):
+    with backend(source_dir) as db:
+        assert db.get_node(9606).name == "Homo sapiens"
+    names = source_dir / "names.dmp"
+    stat = names.stat()
+    names.write_text(names.read_text().replace("Homo sapiens", "Updated Homo sapiens"))
+    os.utime(names, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    with backend(source_dir) as db:
+        assert db.get_node(9606).name == "Updated Homo sapiens"
+
+
+@pytest.mark.parametrize("backend", [TaxDb, TaxSQLite])
+def test_cache_can_be_used_without_sources(source_dir, backend):
+    with backend(source_dir):
+        pass
+    for path in source_dir.glob("*.dmp"):
+        path.unlink()
+    with backend(source_dir) as db:
+        assert db.get_node(9606).name == "Homo sapiens"
+
+
+def test_original_pickle_format_remains_readable(source_dir):
+    db = TaxDb(source_dir)
+    atomic_pickle_dump(source_dir / "taxdump.pickle", [db._taxid2nodes, db._old2news, db.delnodes])
+    assert TaxDb(source_dir).get_node(9606).name == "Homo sapiens"
+
+
+def test_stale_fast_cache_requires_explicit_reselection(fast_cache_dir):
+    from taxdumpy import TaxdumpFileError
+
+    names = fast_cache_dir / "names.dmp"
+    names.write_text(names.read_text().replace("Homo sapiens", "Updated Homo sapiens"))
+    with pytest.raises(TaxdumpFileError, match="stale"):
+        TaxDb(fast_cache_dir, fast=True)

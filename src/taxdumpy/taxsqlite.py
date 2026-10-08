@@ -16,6 +16,7 @@ from rapidfuzz import fuzz, process
 
 from taxdumpy.ansi import m_color, u_str
 from taxdumpy.basic import Node, TaxidError, ValidationError
+from taxdumpy.cache import cache_is_stale, source_signature
 from taxdumpy.database import TaxonomyDatabase
 
 # Set up logging
@@ -50,7 +51,7 @@ class TaxSQLite(TaxonomyDatabase):
         self._conn = sqlite3.connect(self._db_path)
         self._conn.row_factory = sqlite3.Row
         try:
-            if not self._check_tables():
+            if not self._check_tables() or self._cache_is_stale():
                 # An existing file without the expected schema is unusable.
                 self._conn.close()
                 self._create_database()
@@ -102,6 +103,15 @@ class TaxSQLite(TaxonomyDatabase):
         present = {row[0] for row in rows}
         return all(table in present for table in self.REQUIRED_TABLES)
 
+    def _cache_is_stale(self) -> bool:
+        metadata = self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_files'"
+        ).fetchone()
+        signature = None
+        if metadata:
+            signature = {name: (size, mtime) for name, size, mtime in self._conn.execute("SELECT * FROM source_files")}
+        return cache_is_stale(self._db_path, signature)
+
     def __repr__(self):
         repr_str = f"Taxdump (SQLite) Database from {u_str(self._taxdump_dir)}\n"
         repr_str += f"\tImported nodes: {len(self):,}\n"
@@ -116,6 +126,7 @@ class TaxSQLite(TaxonomyDatabase):
         return self._conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
 
     def _build_database(self, conn: sqlite3.Connection):
+        signature = source_signature(self._taxdump_dir)
         try:
             if self._verbose:
                 print("Build up TAXDUMP SQLite Database...")
@@ -141,6 +152,11 @@ class TaxSQLite(TaxonomyDatabase):
                         );
                     CREATE TABLE delnodes (
                         taxid INTEGER PRIMARY KEY
+                        );
+                    CREATE TABLE source_files (
+                        name TEXT PRIMARY KEY,
+                        size INTEGER NOT NULL,
+                        mtime_ns INTEGER NOT NULL
                         );
                     CREATE INDEX idx_names_name        ON names(name);
                     CREATE INDEX idx_names_taxid       ON names(taxid);
@@ -187,6 +203,7 @@ class TaxSQLite(TaxonomyDatabase):
             # 6) Insert Deleted Taxids, so the database is self-contained and
             #    does not need the .dmp files at query time.
             c.executemany("INSERT INTO delnodes VALUES (?)", [(t,) for t in self._import_delnodes()])
+            c.executemany("INSERT INTO source_files VALUES (?,?,?)", ((n, *values) for n, values in signature.items()))
             conn.commit()
         except Exception:
             conn.rollback()
