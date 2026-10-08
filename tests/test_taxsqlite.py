@@ -90,6 +90,10 @@ class TestTaxSQLite:
         sample_taxsqlite.fuzzy_search("Homo sapien")  # Missing 's'
         sample_taxsqlite.fuzzy_search("Eschericia")  # Typo in genus
 
+    def test_rapid_fuzz_returns_all_taxids_for_duplicate_name(self, sample_taxsqlite):
+        results = sample_taxsqlite._rapid_fuzz("Leishmania", limit=10)
+        assert {result["taxid"] for result in results if result["name"] == "Leishmania"} == {5658, 38568}
+
     def test_fuzzy_search_empty_query(self, sample_taxsqlite):
         """Test fuzzy search with empty query."""
         sample_taxsqlite.fuzzy_search("")  # Should handle gracefully

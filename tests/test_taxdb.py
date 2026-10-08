@@ -115,6 +115,10 @@ class TestTaxDb:
         names = [r["name"] for r in results]
         assert any("Homo sapiens" in name for name in names)
 
+    def test_rapid_fuzz_returns_all_taxids_for_duplicate_name(self, sample_taxdb):
+        results = sample_taxdb._rapid_fuzz("Leishmania", limit=10)
+        assert {result["taxid"] for result in results if result["name"] == "Leishmania"} == {5658, 38568}
+
     def test_rapid_fuzz_search_empty_query(self, sample_taxdb):
         """Test fuzzy search with empty query."""
         results = sample_taxdb._rapid_fuzz("", limit=5)

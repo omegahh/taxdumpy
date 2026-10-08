@@ -553,17 +553,20 @@ class TaxDb(TaxonomyDatabase):
 
         try:
             # Perform fuzzy search
-            results = process.extract(query.strip(), self.all_names, scorer=fuzz.WRatio, limit=limit)
+            results = process.extract(
+                query.strip(), list(dict.fromkeys(self.all_names)), scorer=fuzz.WRatio, limit=limit
+            )
 
             # Format results
             formatted_results = []
+            taxids_by_name = {}
+            for taxid, node in self._taxid2nodes.items():
+                taxids_by_name.setdefault(node.name, []).append(taxid)
             for name, score, _ in results:
-                try:
-                    taxid = self.name2taxid[name]
+                for taxid in taxids_by_name.get(name, ()):
                     formatted_results.append({"name": name, "taxid": taxid, "score": score})
-                except KeyError:
-                    logger.warning(f"Name '{name}' found in search but not in name2taxid mapping")
-                    continue
+                    if len(formatted_results) >= limit:
+                        return formatted_results
 
             logger.debug(f"Fuzzy search for '{query}' returned {len(formatted_results)} results")
             return formatted_results

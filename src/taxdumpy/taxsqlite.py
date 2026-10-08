@@ -398,17 +398,20 @@ class TaxSQLite(TaxonomyDatabase):
 
         try:
             # Perform fuzzy search
-            results = process.extract(query.strip(), self.all_names, scorer=fuzz.WRatio, limit=limit)
+            results = process.extract(
+                query.strip(), list(dict.fromkeys(self.all_names)), scorer=fuzz.WRatio, limit=limit
+            )
 
             # Format results
             formatted_results = []
             for name, score, _ in results:
-                try:
-                    taxid = self.name2taxid[name]
-                    formatted_results.append({"name": name, "taxid": taxid, "score": score})
-                except KeyError:
-                    logger.warning(f"Name '{name}' found in search but not in name2taxid mapping")
-                    continue
+                rows = self._conn.execute(
+                    "SELECT taxid FROM names WHERE name=? AND name_class='scientific name' ORDER BY taxid", (name,)
+                )
+                for row in rows:
+                    formatted_results.append({"name": name, "taxid": row["taxid"], "score": score})
+                    if len(formatted_results) >= limit:
+                        return formatted_results
 
             return formatted_results
 
