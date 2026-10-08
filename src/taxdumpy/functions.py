@@ -532,12 +532,20 @@ def descendants(taxdb: TaxonomyDatabase, taxid: int | str, max_depth: int | None
         return []
 
     result: list[int] = []
+    visited = {root}
     depth = 1
     while frontier:
-        result.extend(frontier)
+        next_frontier: list[int] = []
+        for node_taxid in frontier:
+            if node_taxid in visited:
+                raise TaxDbError(
+                    "Taxonomy tree contains a cycle",
+                    f"TaxID {node_taxid} was reached more than once below {root}",
+                )
+            visited.add(node_taxid)
+            result.append(node_taxid)
         if max_depth is not None and depth >= max_depth:
             break
-        next_frontier: list[int] = []
         for node_taxid in frontier:
             kids = children.get(node_taxid)
             if kids:

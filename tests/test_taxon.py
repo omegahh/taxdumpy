@@ -2,7 +2,7 @@
 
 import pytest
 
-from taxdumpy import Taxon
+from taxdumpy import TaxDbError, Taxon
 from taxdumpy.basic import Node
 
 
@@ -17,6 +17,7 @@ class TestTaxon:
         assert isinstance(taxon.node, Node)
         assert taxon.name == "Homo sapiens"
         assert taxon.rank == "species"
+        assert taxon.rank == "species"
 
     def test_taxon_creation_with_taxsqlite(self, sample_taxsqlite, sample_taxids):
         """Test creating a Taxon with TaxSQLite backend."""
@@ -25,7 +26,15 @@ class TestTaxon:
         assert taxon.taxid == sample_taxids["human"]
         assert isinstance(taxon.node, Node)
         assert taxon.name == "Homo sapiens"
-        assert taxon.rank == "species"
+
+    def test_string_taxid_is_not_marked_legacy(self, sample_taxdb):
+        assert not Taxon("9606", sample_taxdb).is_legacy
+
+    def test_lineage_cycle_is_reported(self, sample_taxdb):
+        sample_taxdb._taxid2nodes[9606].parent = 9605
+        sample_taxdb._taxid2nodes[9605].parent = 9606
+        with pytest.raises(TaxDbError, match="cycle"):
+            Taxon(9606, sample_taxdb)
 
     def test_taxon_properties(self, sample_taxdb, sample_taxids):
         """Test various Taxon properties."""

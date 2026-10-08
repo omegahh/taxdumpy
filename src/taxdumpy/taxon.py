@@ -7,7 +7,7 @@ Created: 2025-06-30 19:51:00
 from functools import cached_property
 
 from taxdumpy.ansi import b_str, r_str
-from taxdumpy.basic import RC, Node
+from taxdumpy.basic import RC, Node, TaxDbError
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxsqlite import TaxSQLite
 
@@ -46,8 +46,8 @@ class Taxon:
     # @line_profiler.profile
     def __init__(self, taxid: int, taxdb: TaxDb | TaxSQLite):
         # taxid, taxonomy node, and lineage
-        self._taxid = taxid
-        self._node = taxdb.get_node(taxid)
+        self._taxid = taxdb._validate_taxid(taxid)
+        self._node = taxdb.get_node(self._taxid)
         self._lineage = self._find_lineage(taxdb)
 
     @property
@@ -210,8 +210,15 @@ class Taxon:
 
     def _find_lineage(self, taxdb: TaxDb | TaxSQLite) -> list[Node]:
         lineage = [self.node]
+        seen = {self.node.taxid}
         current_taxid = lineage[-1].taxid
         while lineage[-1].parent != current_taxid:
             current_taxid = lineage[-1].parent
+            if current_taxid in seen:
+                raise TaxDbError(
+                    "Taxonomy lineage contains a cycle",
+                    f"TaxID {current_taxid} was visited more than once while tracing {self.taxid}",
+                )
             lineage.append(taxdb.get_node(current_taxid))
+            seen.add(current_taxid)
         return lineage
