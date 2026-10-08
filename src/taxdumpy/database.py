@@ -40,9 +40,17 @@ class TaxonomyDatabase(ABC):
             taxdump_dir: Path to directory containing NCBI taxdump files
             **kwargs: Backend-specific parameters
         """
-        # Only set _taxdump_dir if taxdump_dir is valid
-        # Individual backends will handle validation
-        self._taxdump_dir = Path(taxdump_dir).resolve()
+        if taxdump_dir is None or (isinstance(taxdump_dir, str) and not taxdump_dir.strip()):
+            raise ValidationError("taxdump_dir", taxdump_dir, "non-empty path")
+        try:
+            path = Path(taxdump_dir)
+        except TypeError:
+            raise ValidationError("taxdump_dir", type(taxdump_dir).__name__, "path-like value")
+        if not path.exists():
+            raise ValidationError("taxdump_dir", str(path), "existing directory path")
+        if not path.is_dir():
+            raise ValidationError("taxdump_dir", str(path), "directory (not file)")
+        self._taxdump_dir = path.resolve()
 
     @abstractmethod
     def get_node(self, taxid: int | str) -> Node:

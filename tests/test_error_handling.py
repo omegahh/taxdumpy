@@ -85,10 +85,16 @@ class TestTaxDbValidation:
 
     def test_invalid_taxdump_dir_none(self):
         """Test TaxDb with None directory."""
-        with pytest.raises(Exception) as exc_info:  # May be TypeError instead of ValidationError
+        with pytest.raises(ValidationError) as exc_info:
             TaxDb(None)
-        # Just ensure an error is raised for None input
         assert exc_info.value is not None
+
+    @pytest.mark.parametrize("backend", ["sqlite", "dict"])
+    def test_factory_backends_validate_paths(self, backend, temp_dir):
+        from taxdumpy import create_database
+
+        with pytest.raises(ValidationError):
+            create_database(temp_dir / "missing", backend)
 
     def test_invalid_taxdump_dir_empty(self):
         """Test TaxDb with empty directory."""

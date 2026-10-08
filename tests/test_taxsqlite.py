@@ -11,6 +11,11 @@ from taxdumpy.basic import Node
 class TestTaxSQLite:
     """Test the TaxSQLite class."""
 
+    @pytest.mark.parametrize("path", [None, "", "/tmp/taxdumpy-missing-path"])
+    def test_invalid_directory_is_validation_error(self, path):
+        with pytest.raises(ValidationError):
+            TaxSQLite(path)
+
     def test_taxsqlite_creation(self, sample_taxdump_dir):
         """Test creating a TaxSQLite instance."""
         with TaxSQLite(sample_taxdump_dir) as taxsqlite:
