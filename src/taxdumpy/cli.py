@@ -343,7 +343,8 @@ def _handle_lineage_command(args, taxdb_path: Path) -> int:
     try:
         print(f"🔍 Looking up lineage for TaxID {args.taxid}...")
 
-        with TaxSQLite(taxdb_path) as taxdb:
+        backend = TaxDb(taxdb_path, fast=True) if args.fast else TaxSQLite(taxdb_path)
+        with backend as taxdb:
             taxon = Taxon(args.taxid, taxdb)
             print(taxon.__repr__())
 

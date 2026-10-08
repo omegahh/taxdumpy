@@ -95,9 +95,9 @@ class TestCLI:
         output = mock_stdout.getvalue()
         assert "Homo sapiens" in output or "9606" in output
 
-    def test_main_lineage_command_fast(self, sample_taxdump_dir):
+    def test_main_lineage_command_fast(self, fast_cache_dir):
         """Test lineage command with --fast flag."""
-        args = ["lineage", "-d", str(sample_taxdump_dir), "--fast", "9606"]
+        args = ["lineage", "-d", str(fast_cache_dir), "--fast", "9606"]
 
         with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
             result = main(args)
