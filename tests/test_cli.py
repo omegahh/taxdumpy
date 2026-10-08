@@ -135,6 +135,9 @@ class TestCLI:
 
         assert result == 0
 
+    def test_main_search_invalid_limit_returns_error(self, sample_taxdump_dir):
+        assert main(["search", "-d", str(sample_taxdump_dir), "--limit", "0", "human"]) == 1
+
     def test_main_invalid_directory(self, temp_dir):
         """Test behavior with invalid taxdump directory."""
         nonexistent_dir = temp_dir / "nonexistent"

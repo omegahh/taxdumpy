@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from taxdumpy import TaxidError, TaxSQLite
+from taxdumpy import TaxidError, TaxSQLite, ValidationError
 from taxdumpy.basic import Node
 
 
@@ -97,6 +97,10 @@ class TestTaxSQLite:
     def test_fuzzy_search_empty_query(self, sample_taxsqlite):
         """Test fuzzy search with empty query."""
         sample_taxsqlite.fuzzy_search("")  # Should handle gracefully
+
+    def test_rapid_fuzz_rejects_boolean_limit(self, sample_taxsqlite):
+        with pytest.raises(ValidationError):
+            sample_taxsqlite._rapid_fuzz("human", limit=True)
 
     def test_database_tables_exist(self, sample_taxsqlite):
         """Test that required database tables exist."""

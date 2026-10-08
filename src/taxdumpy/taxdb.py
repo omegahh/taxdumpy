@@ -544,7 +544,7 @@ class TaxDb(TaxonomyDatabase):
             logger.warning("Empty search query provided")
             return []
 
-        if not isinstance(limit, int) or limit < 1:
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
             raise ValidationError("limit", limit, "positive integer")
 
         if limit > 1000:

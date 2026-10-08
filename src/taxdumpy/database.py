@@ -149,7 +149,7 @@ class TaxonomyDatabase(ABC):
             except ValueError:
                 raise ValidationError("taxid", taxid, "integer or numeric string")
 
-        if not isinstance(taxid, int):
+        if isinstance(taxid, bool) or not isinstance(taxid, int):
             raise ValidationError("taxid", type(taxid).__name__, "integer")
 
         if taxid < 1:

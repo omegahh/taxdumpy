@@ -190,6 +190,9 @@ class TestTaxDbNodeRetrieval:
         with pytest.raises(ValidationError):
             sample_taxdb.get_node({"taxid": 9606})
 
+        with pytest.raises(ValidationError):
+            sample_taxdb.get_node(True)
+
     def test_get_node_invalid_strings(self, sample_taxdb):
         """Test get_node with invalid string values."""
         with pytest.raises(ValidationError):
@@ -266,6 +269,9 @@ class TestSearchValidation:
 
         with pytest.raises(ValidationError):
             sample_taxdb._rapid_fuzz("test", limit="invalid")
+
+        with pytest.raises(ValidationError):
+            sample_taxdb._rapid_fuzz("test", limit=True)
 
     def test_rapid_fuzz_empty_query(self, sample_taxdb):
         """Test _rapid_fuzz with empty query."""

@@ -240,6 +240,8 @@ def main(args: list[str] | None = None) -> int:
 
         # Execute the requested command
         try:
+            if parsed_args.command == "search" and (parsed_args.limit < 1 or parsed_args.limit > 1000):
+                raise ValidationError("limit", parsed_args.limit, "integer between 1 and 1000")
             if parsed_args.command == "cache":
                 return _handle_cache_command(parsed_args, taxdb_path)
             elif parsed_args.command == "lineage":
