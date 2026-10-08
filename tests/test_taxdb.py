@@ -1,6 +1,7 @@
 """Tests for TaxDb class."""
 
 import pickle
+from unittest.mock import patch
 
 import pytest
 
@@ -165,3 +166,16 @@ class TestTaxDb:
         # Should have same data
         assert len(taxdb1) == len(taxdb2)
         assert taxdb1.get_node(9606).name == taxdb2.get_node(9606).name
+
+    def test_existing_pickle_is_deserialized_once(self, sample_taxdump_dir, temp_dir):
+        """Loading an existing cache should not deserialize it as a probe first."""
+        pickle_file = temp_dir / "taxdump.pickle"
+        source_db = TaxDb(sample_taxdump_dir)
+        source_db._pickle = pickle_file
+        source_db.dump_taxdump()
+
+        with patch("taxdumpy.taxdb.pickle.load", wraps=pickle.load) as load:
+            loaded_db = TaxDb(temp_dir)
+
+        assert load.call_count == 1
+        assert loaded_db.get_node(9606).name == "Homo sapiens"

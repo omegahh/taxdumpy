@@ -66,9 +66,6 @@ class TaxDb(TaxonomyDatabase):
         self._mrgef, self._delnf, self._divsf, self._nodef, self._namef = self._taxdbf
         self._pickle = self._taxdump_dir / ("taxdump_fast.pickle" if fast else "taxdump.pickle")
 
-        # Check files exist before proceeding
-        self._check_taxdump()
-
         try:
             if self._verbose:
                 logger.info(f"Loading taxonomy database from {self._taxdump_dir}")
@@ -97,23 +94,6 @@ class TaxDb(TaxonomyDatabase):
 
     def _check_taxdump(self) -> None:
         """Check that required taxdump files exist and are readable."""
-        # If pickle exists and is newer than source files, we're good
-        if self._pickle.is_file():
-            try:
-                # Quick validation that pickle is readable
-                with open(self._pickle, "rb") as f:
-                    # Just read the first few bytes to check format
-                    pickle.load(f)
-                logger.debug(f"Found valid pickle file: {self._pickle}")
-                return
-            except (pickle.PickleError, EOFError, OSError) as e:
-                logger.warning(f"Pickle file corrupted, will rebuild from source: {e}")
-                # Remove corrupted pickle
-                try:
-                    self._pickle.unlink()
-                except OSError:
-                    pass
-
         # Check that all required files exist
         missing_files = []
         corrupted_files = []
@@ -161,15 +141,22 @@ class TaxDb(TaxonomyDatabase):
 
     def _load_taxdump(self):
         if self._pickle.is_file():
-            with open(self._pickle, "rb") as fin:
-                taxid2nodes, old2news, del_taxids = pickle.load(fin)
-        else:
-            taxid2nodes, old2news, del_taxids = self._import_nodes()
-            # Save the imported data to pickle for future use
             try:
-                self._save_pickle(taxid2nodes, old2news, del_taxids)
-            except Exception as e:
-                logger.warning(f"Failed to save pickle file: {e}")
+                with open(self._pickle, "rb") as fin:
+                    taxid2nodes, old2news, del_taxids = pickle.load(fin)
+                logger.debug(f"Loaded valid pickle file: {self._pickle}")
+                return taxid2nodes, old2news, del_taxids
+            except (pickle.PickleError, EOFError, OSError, ValueError, TypeError) as e:
+                logger.warning(f"Pickle file corrupted, will rebuild from source: {e}")
+
+        # Validate source files only when a cache is absent or unusable.
+        self._check_taxdump()
+        taxid2nodes, old2news, del_taxids = self._import_nodes()
+        # Save the imported data to pickle for future use
+        try:
+            self._save_pickle(taxid2nodes, old2news, del_taxids)
+        except Exception as e:
+            logger.warning(f"Failed to save pickle file: {e}")
 
         return taxid2nodes, old2news, del_taxids
 
