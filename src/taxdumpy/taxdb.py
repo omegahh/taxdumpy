@@ -21,6 +21,7 @@ from taxdumpy.basic import (
     TaxidError,
     ValidationError,
 )
+from taxdumpy.cache import atomic_pickle_dump
 from taxdumpy.database import TaxonomyDatabase
 
 # Set up logging
@@ -51,7 +52,9 @@ class TaxDb(TaxonomyDatabase):
         "names.dmp",
     ]
 
-    def __init__(self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False) -> None:
+    def __init__(
+        self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False, *, rebuild: bool = False
+    ) -> None:
         # Call parent constructor
         super().__init__(taxdump_dir)
 
@@ -60,6 +63,7 @@ class TaxDb(TaxonomyDatabase):
 
         self._fast = fast
         self._verbose = verbose
+        self._rebuild = rebuild
 
         # Set up file paths
         self._taxdbf = [self._taxdump_dir / filename for filename in self.REQUIRED_FILES]
@@ -140,7 +144,7 @@ class TaxDb(TaxonomyDatabase):
         return len(self._taxid2nodes)
 
     def _load_taxdump(self):
-        if self._pickle.is_file():
+        if self._pickle.is_file() and not self._rebuild:
             try:
                 with open(self._pickle, "rb") as fin:
                     taxid2nodes, old2news, del_taxids = pickle.load(fin)
@@ -156,6 +160,8 @@ class TaxDb(TaxonomyDatabase):
         try:
             self._save_pickle(taxid2nodes, old2news, del_taxids)
         except Exception as e:
+            if self._rebuild:
+                raise
             logger.warning(f"Failed to save pickle file: {e}")
 
         return taxid2nodes, old2news, del_taxids
@@ -368,12 +374,7 @@ class TaxDb(TaxonomyDatabase):
 
     def _save_pickle(self, taxid2nodes, old2news, del_taxids):
         """Save processed data to pickle file."""
-        with open(self._pickle, "wb") as fout:
-            pickle.dump(
-                [taxid2nodes, old2news, del_taxids],
-                fout,
-                protocol=pickle.HIGHEST_PROTOCOL,
-            )
+        atomic_pickle_dump(self._pickle, [taxid2nodes, old2news, del_taxids])
         logger.debug(f"Saved pickle file: {self._pickle}")
 
     def dump_taxdump(self):

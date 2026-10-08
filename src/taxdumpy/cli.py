@@ -3,7 +3,6 @@
 import argparse
 import logging
 import os
-import pickle
 import sys
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from taxdumpy.basic import (
     TaxidError,
     ValidationError,
 )
+from taxdumpy.cache import atomic_pickle_dump
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxon import Taxon
 from taxdumpy.taxsqlite import TaxSQLite
@@ -274,16 +274,12 @@ def _handle_cache_command(args, taxdb_path: Path) -> int:
             # Build SQLite database
             print("📦 Building SQLite database...")
             sqlite_file = taxdb_path / "taxdump.sqlite"
-            sqlite_file.unlink(missing_ok=True)
-            taxsqlite = TaxSQLite(taxdb_path)
+            taxsqlite = TaxSQLite(taxdb_path, rebuild=True)
             print(f"✅ SQLite database created: {sqlite_file}")
             taxsqlite.close()
             # Build full pickle cache
             print("📦 Building full pickle cache...")
-            pickle_file = taxdb_path / "taxdump.pickle"
-            pickle_file.unlink(missing_ok=True)
-            taxdb = TaxDb(taxdb_path)
-            taxdb.dump_taxdump()
+            taxdb = TaxDb(taxdb_path, rebuild=True)
             print(f"✅ Full pickle cache created with {len(taxdb):,} taxonomy nodes")
         else:
             # Build fast pickle cache with filtered taxids
@@ -329,7 +325,6 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
 
         # Build fast cache
         pickle_file = taxdb_path / "taxdump_fast.pickle"
-        pickle_file.unlink(missing_ok=True)
 
         print("🔄 Loading full taxonomy database...")
         taxdb = TaxDb(taxdb_path)
@@ -354,12 +349,7 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
         #         fout.write(f"{k}\n")
 
         print(f"💾 Writing fast cache to {pickle_file}")
-        with open(pickle_file, "wb") as fout:
-            pickle.dump(
-                [kept_taxid2nodes, taxdb._old2news, taxdb.delnodes],
-                fout,
-                protocol=pickle.HIGHEST_PROTOCOL,
-            )
+        atomic_pickle_dump(pickle_file, [kept_taxid2nodes, taxdb._old2news, taxdb.delnodes])
 
         print(f"🎉 Fast cache created with {len(kept_taxid2nodes):,} taxonomy nodes!")
         return 0

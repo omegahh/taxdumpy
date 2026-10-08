@@ -36,14 +36,14 @@ class TaxSQLite(TaxonomyDatabase):
     # schema is detected and rebuilt instead of failing later on first use.
     REQUIRED_TABLES = ("nodes", "names", "merged", "delnodes")
 
-    def __init__(self, taxdump_dir: Path | str, verbose: bool = False):
+    def __init__(self, taxdump_dir: Path | str, verbose: bool = False, *, rebuild: bool = False):
         # Call parent constructor
         super().__init__(taxdump_dir)
 
         self._verbose = verbose
         self._db_path = self._taxdump_dir / "taxdump.sqlite"
 
-        if not self._db_path.exists():
+        if rebuild or not self._db_path.exists():
             self._create_database()
 
         # open a sqlite connection, and use row_factory for element access, r['name'] for example
@@ -53,7 +53,6 @@ class TaxSQLite(TaxonomyDatabase):
             if not self._check_tables():
                 # An existing file without the expected schema is unusable.
                 self._conn.close()
-                self._db_path.unlink()
                 self._create_database()
                 self._conn = sqlite3.connect(self._db_path)
                 self._conn.row_factory = sqlite3.Row
