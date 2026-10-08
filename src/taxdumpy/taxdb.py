@@ -60,6 +60,8 @@ class TaxDb(TaxonomyDatabase):
 
         # Validate inputs
         self._validate_init_params(taxdump_dir, fast)
+        if fast and rebuild:
+            raise ValidationError("rebuild", rebuild, "build_fast_cache(taxids) to rebuild a filtered cache")
 
         self._fast = fast
         self._verbose = verbose
@@ -152,6 +154,13 @@ class TaxDb(TaxonomyDatabase):
                 return taxid2nodes, old2news, del_taxids
             except (pickle.PickleError, EOFError, OSError, ValueError, TypeError) as e:
                 logger.warning(f"Pickle file corrupted, will rebuild from source: {e}")
+
+        if self._fast:
+            raise TaxdumpFileError(
+                self._pickle.name,
+                "Fast cache is missing or unreadable",
+                "Create it with taxdumpy cache -d PATH -f FILE before using fast=True",
+            )
 
         # Validate source files only when a cache is absent or unusable.
         self._check_taxdump()
@@ -372,9 +381,9 @@ class TaxDb(TaxonomyDatabase):
 
         return taxid2nodes, old2news, del_taxids
 
-    def _save_pickle(self, taxid2nodes, old2news, del_taxids):
+    def _save_pickle(self, taxid2nodes, old2news, del_taxids, *, path=None):
         """Save processed data to pickle file."""
-        atomic_pickle_dump(self._pickle, [taxid2nodes, old2news, del_taxids])
+        atomic_pickle_dump(path or self._pickle, [taxid2nodes, old2news, del_taxids])
         logger.debug(f"Saved pickle file: {self._pickle}")
 
     def dump_taxdump(self):
@@ -382,6 +391,38 @@ class TaxDb(TaxonomyDatabase):
         print(f"Writing to {self._pickle}")
         self._save_pickle(self._taxid2nodes, self._old2news, self.delnodes)
         print("Taxdump dumped!")
+
+    def build_fast_cache(self, taxids) -> int:
+        """Cache selected taxids, their ancestors and descendants; return the node count.
+
+        Resolve and validate every selection before writing. Descending multiple
+        overlapping subtrees visits each node once, after one database-wide scan.
+        Call this on a full database, then open TaxDb(path, fast=True) to reuse it.
+        """
+        from taxdumpy.functions import build_children_index
+        from taxdumpy.taxon import Taxon
+
+        if self._fast:
+            raise ValidationError("database", "fast", "a full TaxDb instance")
+        roots = {self.get_node(taxid).taxid for taxid in taxids}
+        if not roots:
+            raise ValidationError("taxids", roots, "at least one existing taxid")
+        kept = set()
+        for root in roots:
+            kept.update(Taxon(root, self).taxid_lineage)
+        children = build_children_index(self)
+        visited = set(roots)
+        pending = list(roots)
+        while pending:
+            taxid = pending.pop()
+            for child in children.get(taxid, ()):
+                if child not in visited:
+                    visited.add(child)
+                    pending.append(child)
+        kept.update(visited)
+        nodes = {taxid: self._taxid2nodes[taxid] for taxid in sorted(kept)}
+        self._save_pickle(nodes, self._old2news, self.delnodes, path=self._taxdump_dir / "taxdump_fast.pickle")
+        return len(nodes)
 
     def get_node(self, taxid: int | str) -> Node:
         """

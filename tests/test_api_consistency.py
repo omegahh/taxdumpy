@@ -98,10 +98,10 @@ class TestFactoryFunction:
         assert "backend" in str(exc_info.value)
         assert "string" in str(exc_info.value)
 
-    def test_kwargs_forwarding(self, sample_taxdump_dir):
+    def test_kwargs_forwarding(self, fast_cache_dir):
         """Test that kwargs are forwarded to backend constructors."""
         # Test TaxDb with fast=True
-        db = create_database(sample_taxdump_dir, "dict", fast=True)
+        db = create_database(fast_cache_dir, "dict", fast=True)
         assert hasattr(db, "_fast")
         assert db._fast is True
 

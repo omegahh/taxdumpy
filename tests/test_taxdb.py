@@ -19,9 +19,9 @@ class TestTaxDb:
         assert taxdb._taxdump_dir == sample_taxdump_dir.resolve()
         assert not taxdb._fast
 
-    def test_taxdb_fast_mode(self, sample_taxdump_dir):
+    def test_taxdb_fast_mode(self, fast_cache_dir):
         """Test creating TaxDb in fast mode."""
-        taxdb = TaxDb(sample_taxdump_dir, fast=True)
+        taxdb = TaxDb(fast_cache_dir, fast=True)
         assert taxdb._fast is True
 
     def test_taxdb_length(self, sample_taxdb):

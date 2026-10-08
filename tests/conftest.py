@@ -10,6 +10,19 @@ import pytest
 from taxdumpy import TaxDb, TaxSQLite
 
 
+@pytest.fixture
+def source_dir(tmp_path):
+    for path in (Path(__file__).parent / "data").glob("*.dmp"):
+        shutil.copy2(path, tmp_path / path.name)
+    return tmp_path
+
+
+@pytest.fixture
+def fast_cache_dir(source_dir):
+    TaxDb(source_dir).build_fast_cache([9606, 561])
+    return source_dir
+
+
 @pytest.fixture(scope="session")
 def sample_taxdump_dir() -> Generator[Path, None, None]:
     """Copy test data to a temporary directory for testing."""

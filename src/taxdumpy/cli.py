@@ -6,8 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-from tqdm import tqdm
-
 from taxdumpy import __version__
 from taxdumpy.basic import (
     DatabaseCorruptionError,
@@ -17,7 +15,6 @@ from taxdumpy.basic import (
     TaxidError,
     ValidationError,
 )
-from taxdumpy.cache import atomic_pickle_dump
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxon import Taxon
 from taxdumpy.taxsqlite import TaxSQLite
@@ -330,28 +327,9 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
         taxdb = TaxDb(taxdb_path)
         print(f"📊 Full database contains {len(taxdb):,} taxids")
 
-        print("🔍 Finding lineages for specified taxids...")
-
-        kept_taxids = []
-        for taxid in tqdm(taxdb._taxid2nodes.keys(), desc="Loop-over all taxids", ncols=80):
-            taxon = Taxon(taxid, taxdb)
-            lineage_taxids = set(taxon.taxid_lineage)
-            if lineage_taxids.intersection(all_taxids):
-                kept_taxids.extend(taxon.taxid_lineage)
-        kept_taxids = set(kept_taxids)
-
-        print(f"📊 Keeping {len(kept_taxids):,} total taxids (including lineages)")
-
-        # Create filtered database
-        kept_taxid2nodes = {k: v for k, v in taxdb._taxid2nodes.items() if k in kept_taxids}
-        # with open("kept_taxids.list", "w") as fout:
-        #     for k, _ in kept_taxid2nodes.items():
-        #         fout.write(f"{k}\n")
-
-        print(f"💾 Writing fast cache to {pickle_file}")
-        atomic_pickle_dump(pickle_file, [kept_taxid2nodes, taxdb._old2news, taxdb.delnodes])
-
-        print(f"🎉 Fast cache created with {len(kept_taxid2nodes):,} taxonomy nodes!")
+        print("🔍 Finding selected subtrees and ancestors...")
+        count = taxdb.build_fast_cache(all_taxids)
+        print(f"🎉 Fast cache created at {pickle_file} with {count:,} taxonomy nodes!")
         return 0
 
     except Exception as e:

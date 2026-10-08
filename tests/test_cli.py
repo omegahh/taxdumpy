@@ -117,9 +117,9 @@ class TestCLI:
         # Search prints results, so we can't easily assert specific content
         # But it should complete successfully
 
-    def test_main_search_command_fast(self, sample_taxdump_dir):
+    def test_main_search_command_fast(self, fast_cache_dir):
         """Test search command with --fast flag."""
-        args = ["search", "-d", str(sample_taxdump_dir), "--fast", "human"]
+        args = ["search", "-d", str(fast_cache_dir), "--fast", "human"]
 
         with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
             result = main(args)

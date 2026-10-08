@@ -1,21 +1,12 @@
 """Cache replacement must preserve the previous database after a failed build."""
 
 import pickle
-import shutil
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from taxdumpy import TaxDb, TaxSQLite
 from taxdumpy.cache import atomic_pickle_dump
-
-
-@pytest.fixture
-def source_dir(tmp_path):
-    for path in (Path(__file__).parent / "data").glob("*.dmp"):
-        shutil.copy2(path, tmp_path / path.name)
-    return tmp_path
 
 
 def test_interrupted_pickle_write_preserves_previous_cache(tmp_path):
