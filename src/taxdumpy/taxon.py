@@ -77,8 +77,9 @@ class Taxon:
         return "species" in self.rank_lineage
 
     @property
-    def species_taxid(self) -> int:
-        return self.taxid_lineage[self.rank_lineage.index("species")] if self.has_species_level else 0
+    def species_taxid(self) -> int | None:
+        """Return the species ancestor, or None when the lineage has none."""
+        return self.taxid_lineage[self.rank_lineage.index("species")] if self.has_species_level else None
 
     @property
     def taxid_lineage(self) -> list[int]:

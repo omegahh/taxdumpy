@@ -271,9 +271,6 @@ Building a new cache from source requires NCBI taxdump files:
 These issues are still present in the checked-in implementation. Recheck this
 section when the corresponding code or tests change.
 
-**`species_taxid` returns `0` for not-found** where sibling helpers return `None`.
-`0` is falsy but also a plausible-looking taxid.
-
 **Backend divergence**: empty-database width properties can return `None` or
 raise `ValueError`, depending on backend; similar-taxid suggestions use a
 nearest scan (dict) versus `ORDER BY taxid` (SQLite).

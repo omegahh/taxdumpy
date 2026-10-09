@@ -329,7 +329,7 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 .mpa_repr: str            # MetaPhlAn-style lineage string
 .is_legacy: bool          # True if taxid was merged
 .has_species_level: bool  # True if lineage contains species rank
-.species_taxid: int       # Taxid at species level, or 0 if none
+.species_taxid: int | None # Taxid at species level, or None if absent (previously 0)
 ```
 
 **Factory Function**

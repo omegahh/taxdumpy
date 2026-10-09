@@ -85,9 +85,16 @@ class TestTaxon:
         assert human_taxon.has_species_level
         assert human_taxon.species_taxid == sample_taxids["human"]
 
-        # Genus level should have species in lineage
-        genus_taxon = Taxon(9605, sample_taxdb)  # Homo genus
-        # May or may not have species depending on lineage structure
+        genus_taxon = Taxon(9605, sample_taxdb)
+        assert not genus_taxon.has_species_level
+        assert genus_taxon.species_taxid is None
+
+    @pytest.mark.parametrize("fixture", ["sample_taxdb", "sample_taxsqlite"])
+    def test_species_taxid_absence_and_merged_ids(self, fixture, request):
+        db = request.getfixturevalue(fixture)
+        assert Taxon(1, db).species_taxid is None
+        assert Taxon(9605, db).species_taxid is None
+        assert Taxon(13770, db).species_taxid == 2161
 
     def test_taxon_string_representation(self, sample_taxdb, sample_taxids):
         """Test string representations of Taxon."""
