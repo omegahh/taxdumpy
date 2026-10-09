@@ -2,7 +2,7 @@
 
 import pytest
 
-from taxdumpy import TaxDbError, Taxon
+from taxdumpy import TaxDbError, Taxon, create_database
 from taxdumpy.basic import Node
 
 
@@ -35,6 +35,20 @@ class TestTaxon:
         sample_taxdb._taxid2nodes[9605].parent = 9606
         with pytest.raises(TaxDbError, match="cycle"):
             Taxon(9606, sample_taxdb)
+
+    @pytest.mark.parametrize("backend", ["dict", "sqlite"])
+    def test_non_root_self_parent_is_reported(self, backend, source_dir):
+        path = source_dir / "nodes.dmp"
+        lines = []
+        for line in path.read_text().splitlines(keepends=True):
+            fields = line.split("\t")
+            if fields[0] == "9605":
+                fields[2] = "9605"
+            lines.append("\t".join(fields))
+        path.write_text("".join(lines))
+        with create_database(source_dir, backend) as db:
+            with pytest.raises(TaxDbError, match="outside the NCBI root"):
+                Taxon(9606, db)
 
     def test_taxon_properties(self, sample_taxdb, sample_taxids):
         """Test various Taxon properties."""

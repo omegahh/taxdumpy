@@ -198,4 +198,9 @@ class Taxon:
                 )
             lineage.append(taxdb.get_node(current_taxid))
             seen.add(current_taxid)
+        if lineage[-1].taxid != 1:
+            raise TaxDbError(
+                "Taxonomy lineage terminates outside the NCBI root",
+                f"TaxID {lineage[-1].taxid} is its own parent while tracing {self.taxid}; expected root TaxID 1",
+            )
         return lineage
