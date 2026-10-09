@@ -110,6 +110,16 @@ class TestFactoryFunction:
 class TestPolymorphicBehavior:
     """Test that both backends behave identically."""
 
+    def test_empty_database_widths(self, backend, source_dir):
+        with create_database(source_dir, backend) as db:
+            if isinstance(db, TaxDb):
+                db._taxid2nodes.clear()
+            else:
+                db._conn.execute("DELETE FROM nodes")
+            assert len(db) == 0
+            assert db.max_taxid_strlen == 0
+            assert db.max_rank_strlen == 0
+
     def test_get_node_consistent_signature(self, backend, sample_taxdump_dir, sample_taxids):
         """Test get_node method consistency."""
         db = create_database(sample_taxdump_dir, backend)

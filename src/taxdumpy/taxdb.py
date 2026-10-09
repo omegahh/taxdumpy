@@ -217,11 +217,11 @@ class TaxDb(TaxonomyDatabase):
 
     @cached_property
     def max_taxid_strlen(self) -> int:
-        return len(str(max(self._taxid2nodes.keys())))
+        return len(str(max(self._taxid2nodes))) if self._taxid2nodes else 0
 
     @cached_property
     def max_rank_strlen(self) -> int:
-        return max(len(n.rank) for n in self._taxid2nodes.values())
+        return max((len(n.rank) for n in self._taxid2nodes.values()), default=0)
 
     def _import_merged(self) -> Dict[int, int]:
         """Import merged taxid mappings with error handling."""

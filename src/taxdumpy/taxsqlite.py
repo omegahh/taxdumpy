@@ -233,12 +233,12 @@ class TaxSQLite(TaxonomyDatabase):
     @cached_property
     def max_taxid_strlen(self) -> int:
         max_taxid = self._conn.execute("SELECT MAX(taxid) AS max_taxid FROM nodes").fetchone()["max_taxid"]
-        return len(str(max_taxid))
+        return len(str(max_taxid)) if max_taxid is not None else 0
 
     @cached_property
     def max_rank_strlen(self) -> int:
         row = self._conn.execute("SELECT MAX(LENGTH(rank)) FROM nodes").fetchone()
-        return row[0]
+        return row[0] or 0
 
     def _import_merged(self) -> dict[int, int]:
         old2new = {}

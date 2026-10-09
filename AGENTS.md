@@ -141,6 +141,7 @@ tests/
 - Shared methods: `_validate_taxid()` - validates and converts taxid to integer
 - Abstract cached properties: `all_names`, `name2taxid`, `delnodes`, `max_taxid_strlen`, `max_rank_strlen`
 - Context manager support for connection management
+- Formatting width properties return zero for an empty database
 
 **Important**: these five properties use the module's `abstract_cached_property`
 helper, not `@cached_property` over `@abstractmethod`. Stacking those two
@@ -270,10 +271,6 @@ Building a new cache from source requires NCBI taxdump files:
 
 These issues are still present in the checked-in implementation. Recheck this
 section when the corresponding code or tests change.
-
-**Backend divergence**: empty-database width properties can return `None` or
-raise `ValueError`, depending on backend; similar-taxid suggestions use a
-nearest scan (dict) versus `ORDER BY taxid` (SQLite).
 
 **`cli.py` still reaches into backend internals** (`_rapid_fuzz` for structured
 search results), so the stable CLI and backend APIs are not fully separated.
