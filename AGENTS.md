@@ -280,12 +280,6 @@ and `_RANKCODE_ORDER` (`basic.py`). This causes live inconsistencies:
 Keep rank-related changes consistent across these definitions until they are
 consolidated; add a check that canonical ranks and rank codes agree.
 
-**`upper_rank_id` counts parent steps as rank levels** (`functions.py`). When the
-target rank and its subrank are absent, it walks a number of parent links based
-on canonical rank distance. Unranked nodes between canonical ranks make that
-distance differ from the number of parent links, so the result can be at the
-wrong rank.
-
 **`species_taxid` returns `0` for not-found** where sibling helpers return `None`.
 `0` is falsy but also a plausible-looking taxid.
 
@@ -298,8 +292,6 @@ search results), so the stable CLI and backend APIs are not fully separated.
 
 **Test gaps**: `tests/test_functions.py` has no direct tests for
 `get_rank_taxid`, `get_canonical_ranks`, `get_closest_rank`, `get_rank_distance`,
-`get_rank_or_closest`, `get_all_ranks`, or `find_rank_in_lineage`. It also has a
-subrank test whose body ends in `pass`, a jump-logic test that swallows expected
-exceptions, and assertions guarded by conditions that may skip on regression.
+`get_rank_or_closest`, `get_all_ranks`, or `find_rank_in_lineage`.
 The full suite measured `functions.py` at 68% coverage and the package at 85%
 in the repository environment during this audit.

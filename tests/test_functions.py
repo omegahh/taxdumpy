@@ -1,5 +1,7 @@
 """Tests for functions module."""
 
+from dataclasses import replace
+
 import pytest
 
 from taxdumpy import Taxon
@@ -41,14 +43,9 @@ class TestFunctions:
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
         # Test getting genus from species
-        if "genus" in human_taxon.rank_lineage:
-            genus_id = upper_rank_id(human_taxon, sample_taxdb, "genus")
-            assert isinstance(genus_id, int)
-            assert genus_id > 0
-
-            # Verify it's actually a genus
-            genus_taxon = Taxon(genus_id, sample_taxdb)
-            assert genus_taxon.rank == "genus"
+        genus_id = upper_rank_id(human_taxon, sample_taxdb, "genus")
+        assert genus_id == 9605
+        assert Taxon(genus_id, sample_taxdb).rank == "genus"
 
     def test_upper_rank_id_same_rank_error(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id with same rank (should raise error)."""
@@ -80,48 +77,30 @@ class TestFunctions:
         """Test upper_rank_id with invalid target rank."""
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
-        # Should raise assertion error for invalid rank
-        with pytest.raises(Exception):  # AssertionError wrapped in TaxRankError
+        with pytest.raises(TaxRankError):
             upper_rank_id(human_taxon, sample_taxdb, "invalid_rank")
 
     def test_upper_rank_id_direct_lineage(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id when target rank exists directly in lineage."""
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
-        # If family exists in lineage, should find it directly
-        if "family" in human_taxon.rank_lineage:
-            family_id = upper_rank_id(human_taxon, sample_taxdb, "family")
-            family_idx = human_taxon.rank_lineage.index("family")
-            expected_id = human_taxon.taxid_lineage[family_idx]
-            assert family_id == expected_id
+        assert upper_rank_id(human_taxon, sample_taxdb, "family") == 9604
 
     def test_upper_rank_id_sub_rank(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id when sub-rank exists in lineage."""
+        node = sample_taxdb.get_node(9604)
+        sample_taxdb._taxid2nodes[9604] = replace(node, rank="clade")
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
+        assert upper_rank_id(human_taxon, sample_taxdb, "family") == 207598
 
-        # This test might not apply to our sample data
-        # but tests the sub-rank logic
-        lineage_ranks = human_taxon.rank_lineage
-
-        # Mock a scenario where subfamily exists but not family
-        # This is mainly to test the logic structure
-        pass
-
-    def test_upper_rank_id_jump_logic(self, sample_taxdb, sample_taxids):
-        """Test upper_rank_id jump logic when exact rank not found."""
+    def test_upper_rank_id_missing_rank_does_not_guess_parent(self, sample_taxdb, sample_taxids):
+        """Clades between ranks cannot substitute for a missing canonical rank."""
+        for taxid, node in sample_taxdb._taxid2nodes.items():
+            if node.rank in {"family", "subfamily"}:
+                sample_taxdb._taxid2nodes[taxid] = replace(node, rank="clade")
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
-
-        # This tests the complex logic where we need to jump up levels
-        # The exact behavior depends on the lineage structure
-        # For now, just test that it doesn't crash
-        try:
-            if len(human_taxon.rank_lineage) > 3:  # Need enough levels
-                # Try to get a high-level rank
-                result = upper_rank_id(human_taxon, sample_taxdb, "superkingdom")
-                assert isinstance(result, int)
-        except (RuntimeError, TaxRankError):
-            # Expected if the rank structure doesn't support this
-            pass
+        with pytest.raises(TaxRankError, match="absent"):
+            upper_rank_id(human_taxon, sample_taxdb, "family")
 
     def test_rank_level_consistency(self):
         """Test that rank levels are consistent and ordered."""

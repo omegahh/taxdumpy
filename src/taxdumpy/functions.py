@@ -70,9 +70,14 @@ EXTENDED_RANKS = [
 
 def upper_rank_id(
     tax: Taxon,
-    taxdb: TaxDb,
+    taxdb: TaxonomyDatabase,
     rank: RankName,
 ) -> int:
+    """Return a higher canonical rank (or its subrank), raising if absent.
+
+    The taxdb argument is retained for compatibility. Use get_closest_rank
+    when falling back to a different rank is appropriate.
+    """
     curr_rank = tax.rank
     if curr_rank not in RANKNAMES:
         raise TaxRankError(
@@ -92,19 +97,7 @@ def upper_rank_id(
         return tax.taxid_lineage[tax.rank_lineage.index(rank)]
     elif f"sub{rank}" in tax.rank_lineage:
         return tax.taxid_lineage[tax.rank_lineage.index(f"sub{rank}")]
-    else:
-        # neither rank nor sub-rank in the lineage
-        temp_level = high_level
-        temp_rank = LEVEL2RANK[temp_level]
-        while temp_level > curr_level:
-            temp_level -= 1
-            temp_rank = LEVEL2RANK[temp_level]
-            if temp_rank in tax.rank_lineage:
-                break
-        jump_taxid = tax.taxid_lineage[tax.rank_lineage.index(temp_rank)]
-        for _ in range(high_level - temp_level):
-            jump_taxid = Taxon(jump_taxid, taxdb).parent
-        return jump_taxid
+    raise TaxRankError(rank, f"Rank '{rank}' is absent from the lineage of TaxID {tax.taxid}")
 
 
 def get_rank_taxid(
