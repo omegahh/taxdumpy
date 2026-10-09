@@ -218,6 +218,15 @@ class TaxSQLite(TaxonomyDatabase):
         return all_names
 
     @cached_property
+    def _search_names(self) -> dict[int, str]:
+        return {
+            row["taxid"]: row["name"]
+            for row in self._conn.execute(
+                "SELECT taxid, name FROM names WHERE name_class='scientific name' ORDER BY taxid"
+            )
+        }
+
+    @cached_property
     def name2taxid(self) -> dict[str, int]:
         # create name->taxid map
         name2taxid = {
@@ -398,22 +407,8 @@ class TaxSQLite(TaxonomyDatabase):
 
         try:
             # Perform fuzzy search
-            results = process.extract(
-                query.strip(), list(dict.fromkeys(self.all_names)), scorer=fuzz.WRatio, limit=limit
-            )
-
-            # Format results
-            formatted_results = []
-            for name, score, _ in results:
-                rows = self._conn.execute(
-                    "SELECT taxid FROM names WHERE name=? AND name_class='scientific name' ORDER BY taxid", (name,)
-                )
-                for row in rows:
-                    formatted_results.append({"name": name, "taxid": row["taxid"], "score": score})
-                    if len(formatted_results) >= limit:
-                        return formatted_results
-
-            return formatted_results
+            results = process.extract(query.strip(), self._search_names, scorer=fuzz.WRatio, limit=limit)
+            return [{"name": name, "taxid": taxid, "score": score} for name, score, taxid in results]
 
         except Exception as e:
             from taxdumpy.basic import TaxDbError

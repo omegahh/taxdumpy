@@ -208,6 +208,10 @@ class TaxDb(TaxonomyDatabase):
         return [node.name for node in self._taxid2nodes.values()]
 
     @cached_property
+    def _search_names(self) -> dict[int, str]:
+        return {taxid: node.name for taxid, node in self._taxid2nodes.items()}
+
+    @cached_property
     def name2taxid(self) -> Dict[str, int]:
         return {node.name: taxid for taxid, node in self._taxid2nodes.items()}
 
@@ -553,20 +557,8 @@ class TaxDb(TaxonomyDatabase):
 
         try:
             # Perform fuzzy search
-            results = process.extract(
-                query.strip(), list(dict.fromkeys(self.all_names)), scorer=fuzz.WRatio, limit=limit
-            )
-
-            # Format results
-            formatted_results = []
-            taxids_by_name = {}
-            for taxid, node in self._taxid2nodes.items():
-                taxids_by_name.setdefault(node.name, []).append(taxid)
-            for name, score, _ in results:
-                for taxid in taxids_by_name.get(name, ()):
-                    formatted_results.append({"name": name, "taxid": taxid, "score": score})
-                    if len(formatted_results) >= limit:
-                        return formatted_results
+            results = process.extract(query.strip(), self._search_names, scorer=fuzz.WRatio, limit=limit)
+            formatted_results = [{"name": name, "taxid": taxid, "score": score} for name, score, taxid in results]
 
             logger.debug(f"Fuzzy search for '{query}' returned {len(formatted_results)} results")
             return formatted_results

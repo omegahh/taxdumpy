@@ -1,6 +1,7 @@
 """Tests for API consistency across database backends."""
 
 import pytest
+from rapidfuzz import process
 
 from taxdumpy import TaxDb, TaxonomyDatabase, TaxSQLite, create_database
 from taxdumpy.basic import TaxidError, ValidationError
@@ -119,6 +120,18 @@ class TestPolymorphicBehavior:
             assert len(db) == 0
             assert db.max_taxid_strlen == 0
             assert db.max_rank_strlen == 0
+
+    def test_repeated_search_reuses_candidates_and_preserves_duplicate_names(self, backend, sample_taxdump_dir):
+        from unittest.mock import patch
+
+        with create_database(sample_taxdump_dir, backend) as db:
+            with patch.object(process, "extract", wraps=process.extract) as extract:
+                first = db._rapid_fuzz("Leishmania", limit=2)
+                second = db._rapid_fuzz("Leishmania", limit=2)
+            assert first == second
+            assert {match["taxid"] for match in first} == {5658, 38568}
+            assert all(match["score"] == 100 for match in first)
+            assert extract.call_args_list[0].args[1] is extract.call_args_list[1].args[1]
 
     def test_get_node_consistent_signature(self, backend, sample_taxdump_dir, sample_taxids):
         """Test get_node method consistency."""
