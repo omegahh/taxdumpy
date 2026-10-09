@@ -37,9 +37,10 @@ taxdumpy search --fast "Escherichia coli"
 taxdumpy lineage 511145
 ```
 
-`search --fast` needs a fast cache created with `cache -f FILE`. The lineage
-command accepts `--fast` but currently ignores it and always opens SQLite; do
-not rely on that flag.
+`search --fast` and `lineage --fast` need a filtered pickle cache created with
+`cache -f FILE`. Without `--fast`, both commands use SQLite to avoid loading the
+full pickle for a single query. Python batch callers should create one `TaxDb`
+instance and reuse it for all queries.
 
 ### Testing and Quality
 ```bash
@@ -105,6 +106,7 @@ src/taxdumpy/
 ├── ansi.py              # ANSI color formatting utilities
 ├── basic.py             # Core data structures (Node) and exception hierarchy
 ├── database.py          # Abstract base class (TaxonomyDatabase) + factory function
+├── cache.py             # Source signatures and atomic pickle replacement
 ├── taxdb.py             # Dictionary-based in-memory backend with pickle caching
 ├── taxsqlite.py         # SQLite-based persistent backend
 ├── taxon.py             # Taxon entity with lineage resolution
@@ -116,10 +118,12 @@ tests/
 ├── data/                # Sample taxdump files for testing
 ├── test_api_consistency.py
 ├── test_basic.py
+├── test_cache.py
 ├── test_cli.py
 ├── test_critical_regressions.py  # Pins previously-shipped critical defects
 ├── test_descendants.py           # Subtree traversal, parametrized over both backends
 ├── test_error_handling.py
+├── test_fast_cache.py
 ├── test_functions.py
 ├── test_integration.py
 ├── test_taxdb.py
@@ -146,7 +150,14 @@ it instantiates fine, returning `None`. Do not "simplify" this back.
 **TaxDb** (`taxdb.py`): Dictionary-based in-memory database
 - Fast mode (`fast=True`) loads `taxdump_fast.pickle`, built from the taxids in a
   filter file, their ancestors, and their descendants
-- Pickle serialization for ~3x speedup on subsequent loads
+- Deserializes a pickle once per initialization; reuse the instance for batches
+- `build_fast_cache(taxids)` validates selections and writes the filtered cache
+- New pickle caches include versioned source signatures; original three-part
+  pickles remain readable. Changes in available source sizes or mtimes trigger
+  a rebuild; caches remain usable when source files have been removed
+- Pickle writes use atomic replacement. `rebuild=True` forces a full rebuild;
+  a failed rebuild preserves the previous cache
+- Missing, stale or corrupt fast caches require an explicit filtered rebuild
 - Data structures: `_taxid2nodes` (dict), `_old2news` (merged taxids), `_delnodes` (set)
 
 **TaxSQLite** (`taxsqlite.py`): SQLite-based persistent database
@@ -155,6 +166,9 @@ it instantiates fine, returning `None`. Do not "simplify" this back.
 - The database is self-contained: no `.dmp` file is read at query time
 - Builds go to a `mkstemp` temp path and are `os.replace`d into position, so an interrupted build cannot leave a schema-complete but empty database behind
 - Indexed for fast queries
+- Deleted-taxid checks use an indexed lookup rather than loading the whole set
+- New caches record source signatures in `source_files`; legacy caches use
+  source mtimes. `rebuild=True` forces a rebuild with atomic replacement
 - Memory-efficient for large datasets
 
 **Factory Function**: `create_database(taxdump_dir, backend="sqlite", ...)`.
@@ -226,13 +240,13 @@ them onto `TaxonomyDatabase` would remove that coupling.
 |---------|-------------|-------------|
 | `cache` | Build SQLite and full pickle caches; with `-f`, build only a filtered fast pickle | `-d/--directory`, `-f/--filter-file` |
 | `search` | Fuzzy organism name search | `-d/--directory`, `--fast`, `--limit` |
-| `lineage` | Display taxonomic lineage (SQLite backend) | `-d/--directory` |
+| `lineage` | Display taxonomic lineage (SQLite by default, filtered pickle with `--fast`) | `-d/--directory`, `--fast` |
 
 ### Environment Variables
 - `TAXDB_PATH`: Default path to taxonomy database (defaults to `~/.taxonkit`)
 
 ### Performance Features
-- Pickle caching for fast loading (`fast=True` parameter)
+- Pickle caching for repeated Python queries; `fast=True` loads a filtered cache
 - SQLite backend for memory efficiency with large datasets
 - Rapidfuzz integration for fuzzy organism name matching
 - Fast cache mode for selected taxids and their related lineage/subtree
@@ -272,32 +286,15 @@ on canonical rank distance. Unranked nodes between canonical ranks make that
 distance differ from the number of parent links, so the result can be at the
 wrong rank.
 
-**`lineage --fast` is accepted and ignored** (`cli.py`). The flag is registered
-but `_handle_lineage_command` unconditionally opens `TaxSQLite`; remove or fix
-the flag before documenting it as functional.
-
-**`is_legacy` compares the raw constructor arg to `node.taxid`** (`taxon.py:97`).
-Since `get_node` accepts `str`, `Taxon("9606", db)` reports itself as merged.
-
-**`_find_lineage` has no depth cap** (`taxon.py:211`). It terminates only on the
-root self-loop, so a cyclic `nodes.dmp` loops until memory is exhausted.
-
 **`species_taxid` returns `0` for not-found** where sibling helpers return `None`.
 `0` is falsy but also a plausible-looking taxid.
 
-**Backend divergence**: `max_rank_strlen` returns `None` (SQLite) but raises
-`ValueError` (dict) on an empty database; similar-taxid suggestions use a
-nearest scan (dict) versus `ORDER BY taxid` (SQLite); and `TaxSQLite` does not
-perform the `taxdump_dir` validation done by `TaxDb`, so invalid paths can raise
-different exception types.
+**Backend divergence**: empty-database width properties can return `None` or
+raise `ValueError`, depending on backend; similar-taxid suggestions use a
+nearest scan (dict) versus `ORDER BY taxid` (SQLite).
 
-**`taxdb.py` never invalidates the pickle** against source mtimes despite a
-comment claiming it does, and deserializes the whole pickle twice per load (once
-as a validity probe, once for real).
-
-**`cli.py` reaches into backend internals** (`_taxid2nodes`, `_old2news`,
-`_rapid_fuzz`) and hand-writes the pickle tuple, so its layout is defined in two
-places and can drift.
+**`cli.py` still reaches into backend internals** (`_rapid_fuzz` for structured
+search results), so the stable CLI and backend APIs are not fully separated.
 
 **Test gaps**: `tests/test_functions.py` has no direct tests for
 `get_rank_taxid`, `get_canonical_ranks`, `get_closest_rank`, `get_rank_distance`,
