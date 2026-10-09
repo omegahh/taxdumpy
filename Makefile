@@ -31,11 +31,13 @@ coverage-xml: ## Generate XML coverage report for CI
 	pytest --cov=taxdumpy --cov-report=xml
 
 lint: ## Run code linting
-	black --check src/ tests/
+	ruff format --check src/ tests/
+	ruff check src/ tests/
 	@echo "✓ Code formatting check passed"
 
-format: ## Format code with black
-	black src/ tests/
+format: ## Format code and sort imports with ruff
+	ruff check src/ tests/ --fix
+	ruff format src/ tests/
 	@echo "✓ Code formatted"
 
 clean: ## Clean build artifacts
@@ -77,7 +79,8 @@ ci-test: ## Run tests suitable for CI
 	pytest --cov=taxdumpy --cov-report=xml --cov-fail-under=80
 
 ci-lint: ## Run linting for CI
-	black --check --diff src/ tests/
+	ruff format --check --diff src/ tests/
+	ruff check src/ tests/
 
 # Sample data helpers
 create-sample-data: ## Create minimal sample taxdump data for testing
