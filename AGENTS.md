@@ -273,7 +273,11 @@ Building a new cache from source requires NCBI taxdump files:
 These issues are still present in the checked-in implementation. Recheck this
 section when the corresponding code or tests change.
 
-**Test gaps**: `tests/test_functions.py` still needs broader tests for rank
-helpers, especially `get_all_ranks` and `find_rank_in_lineage`.
-The full suite measured `functions.py` at 68% coverage and the package at 85%
-in the repository environment during this audit.
+**Mutable nodes**: `TaxDb.get_node` returns stored Node objects while SQLite
+returns fresh ones. Mutating dict nodes can invalidate cached search and
+children indexes; treat returned nodes as read-only until an explicit mutation
+API or immutable node contract is introduced.
+
+**Importer differences**: malformed input handling differs between backends.
+SQLite construction also holds parsed names and node rows in memory, so its
+build uses more memory than steady-state queries.

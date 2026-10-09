@@ -4,12 +4,14 @@ from dataclasses import replace
 
 import pytest
 
-from taxdumpy import Taxon
-from taxdumpy.basic import RC, TaxRankError
+from taxdumpy import TaxDbError, Taxon, create_database
+from taxdumpy.basic import RC, TaxRankError, ValidationError
 from taxdumpy.functions import (
     LEVEL2RANK,
     RANK2LEVEL,
     RANKNAMES,
+    find_rank_in_lineage,
+    get_all_ranks,
     get_canonical_ranks,
     get_closest_rank,
     get_rank_distance,
@@ -19,6 +21,80 @@ from taxdumpy.functions import (
     upper_rank_id,
 )
 from taxdumpy.ranks import EXTENDED_RANKS, MPA_CODES, RANK_CODES
+
+
+@pytest.fixture(params=["dict", "sqlite"])
+def rank_db(request, sample_taxdump_dir):
+    with create_database(sample_taxdump_dir, request.param) as db:
+        yield db
+
+
+class TestRankHelpers:
+    def test_exact_subrank_and_missing_lookup(self, rank_db):
+        human = Taxon(9606, rank_db)
+        assert get_rank_taxid(human, "family") == 9604
+        assert get_rank_taxid(human, "subfamily") == 207598
+        human._lineage = [replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage]
+        assert get_rank_taxid(human, "family") == 207598
+        assert get_rank_taxid(human, "family", include_subrank=False) is None
+        assert get_rank_taxid(human, "absent") is None
+        assert get_rank_taxid(Taxon(6072, rank_db), "kingdom") == 33208
+
+    def test_canonical_ranks_with_subrank_control(self, rank_db):
+        human = Taxon(9606, rank_db)
+        human._lineage = [replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage]
+        ranks = get_canonical_ranks(human)
+        assert ranks["family"] == 207598
+        assert ranks["domain"] == ranks["superkingdom"] == 2759
+        assert "clade" not in ranks
+        assert "realm" not in ranks
+        assert "family" not in get_canonical_ranks(human, include_subranks=False)
+        assert get_canonical_ranks(Taxon(1, rank_db)) == {}
+
+    def test_closest_rank_ignores_unranked_links(self, rank_db):
+        taxon = Taxon(6072, rank_db)
+        assert get_closest_rank(taxon, "class") == (33208, "kingdom")
+        assert get_closest_rank(taxon, "invalid") == (None, None)
+        assert get_closest_rank(Taxon(1, rank_db), "genus") == (None, None)
+        human = Taxon(9606, rank_db)
+        human._lineage = [replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage]
+        assert get_closest_rank(human, "family") == (207598, "subfamily")
+        assert get_closest_rank(human, "family", include_subranks=False) == (9443, "order")
+
+    def test_fallback_distance_counts_canonical_levels(self, rank_db):
+        taxon = Taxon(6072, rank_db)
+        assert get_rank_or_closest(taxon, "class", max_distance=1) is None
+        assert get_rank_or_closest(taxon, "class", max_distance=2) == 33208
+        assert get_rank_or_closest(taxon, "class") == 33208
+        assert get_rank_or_closest(taxon, "kingdom", max_distance=0) == 33208
+        assert get_rank_or_closest(taxon, "invalid") is None
+        assert get_rank_or_closest(Taxon(1, rank_db), "species") is None
+
+    @pytest.mark.parametrize("bad", [-1, True, 1.5, "2"])
+    def test_fallback_rejects_invalid_distance(self, rank_db, bad):
+        with pytest.raises(ValidationError, match="max_distance"):
+            get_rank_or_closest(Taxon(9606, rank_db), "genus", max_distance=bad)
+
+    def test_all_ranks_keeps_nearest_repeated_rank(self, rank_db):
+        ranks = get_all_ranks(Taxon(9606, rank_db))
+        assert ranks["species"] == 9606
+        assert ranks["clade"] == 1437010
+        assert ranks["no rank"] == 1
+        assert ranks["subfamily"] == 207598
+
+    def test_rank_preferences_are_respected(self, rank_db):
+        taxon = Taxon(9606, rank_db)
+        assert find_rank_in_lineage(taxon, ["family", "genus"]) == (9604, "family")
+        assert find_rank_in_lineage(taxon, ["absent", "genus"]) == (9605, "genus")
+        assert find_rank_in_lineage(taxon, ["absent"]) == (None, None)
+        assert find_rank_in_lineage(taxon, []) == (None, None)
+
+    @pytest.mark.parametrize("first,second,distance", [("species", "family", 2), ("genus", "genus", 0)])
+    def test_rank_distance_is_symmetric(self, first, second, distance):
+        assert get_rank_distance(first, second) == distance
+        assert get_rank_distance(second, first) == distance
+        assert get_rank_distance(first, "clade") is None
+        assert get_rank_distance("invalid", second) is None
 
 
 class TestFunctions:
@@ -296,3 +372,9 @@ class TestFunctions:
         """Test that unknown taxids are skipped."""
         groups = group_taxids_by_rank([999999999], "family", sample_taxdb)
         assert groups == {}
+
+    def test_grouping_does_not_swallow_database_corruption(self, sample_taxdb):
+        node = sample_taxdb.get_node(9605)
+        sample_taxdb._taxid2nodes[9605] = replace(node, parent=9606)
+        with pytest.raises(TaxDbError, match="cycle"):
+            group_taxids_by_rank([9606], "family", sample_taxdb)

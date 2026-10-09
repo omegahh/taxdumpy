@@ -6,7 +6,7 @@ Created: 2025-07-06 17:07:57
 
 from weakref import WeakKeyDictionary
 
-from taxdumpy.basic import TaxDbError, TaxRankError, ValidationError
+from taxdumpy.basic import TaxDbError, TaxidError, TaxRankError, ValidationError
 from taxdumpy.database import TaxonomyDatabase
 from taxdumpy.ranks import EXTENDED_RANKS, LEVEL2RANK, RANK2LEVEL, RANK_ALIASES, RANK_CODES, RANKNAMES, RankName
 from taxdumpy.taxdb import TaxDb
@@ -185,6 +185,11 @@ def get_rank_or_closest(
     if rank not in RANKNAMES:
         return None
 
+    if max_distance is not None and (
+        isinstance(max_distance, bool) or not isinstance(max_distance, int) or max_distance < 0
+    ):
+        raise ValidationError("max_distance", max_distance, "non-negative integer or None")
+
     target_level = RANK2LEVEL[rank]
 
     # Determine search range
@@ -293,7 +298,7 @@ def get_rank_distance(
 def group_taxids_by_rank(
     taxids: list[int],
     rank: str,
-    taxdb: TaxDb,
+    taxdb: TaxonomyDatabase,
 ) -> dict[int, list[int]]:
     """
     Group taxids by a target rank, using closest ancestor if exact rank is missing.
@@ -330,7 +335,7 @@ def group_taxids_by_rank(
     for taxid in taxids:
         try:
             taxon = Taxon(taxid, taxdb)
-        except Exception:
+        except (TaxidError, ValidationError):
             continue
 
         # Find first RC <= target (exact match or closest ancestor)
