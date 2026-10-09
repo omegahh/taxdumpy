@@ -133,6 +133,15 @@ class TestPolymorphicBehavior:
             assert all(match["score"] == 100 for match in first)
             assert extract.call_args_list[0].args[1] is extract.call_args_list[1].args[1]
 
+    def test_public_search_returns_structured_results(self, backend, sample_taxdump_dir):
+        with create_database(sample_taxdump_dir, backend) as db:
+            assert db.search("Homo sapiens", limit=1) == [{"name": "Homo sapiens", "taxid": 9606, "score": 100.0}]
+            assert db.search("   ") == []
+            with pytest.raises(ValidationError):
+                db.search("human", limit=False)
+            with pytest.raises(ValidationError):
+                db.fuzzy_search("human", limit=False)
+
     def test_get_node_consistent_signature(self, backend, sample_taxdump_dir, sample_taxids):
         """Test get_node method consistency."""
         db = create_database(sample_taxdump_dir, backend)

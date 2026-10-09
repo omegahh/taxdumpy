@@ -359,12 +359,11 @@ def _handle_search_command(args, taxdb_path: Path) -> int:
     try:
         print(f"🔍 Searching for '{args.keyword}'...")
 
-        # Choose database backend
         if args.fast:
             print("⚡ Using fast mode")
-            taxdb = TaxDb(taxdb_path, fast=True)
-            # Use TaxDb's fuzzy search
-            results = taxdb._rapid_fuzz(args.keyword, limit=args.limit)
+        backend = TaxDb(taxdb_path, fast=True) if args.fast else TaxSQLite(taxdb_path)
+        with backend as taxdb:
+            results = taxdb.search(args.keyword, limit=args.limit)
             if not results:
                 print(f"❌ No results found for '{args.keyword}'")
                 print("💡 Try a different search term or check spelling")
@@ -375,19 +374,9 @@ def _handle_search_command(args, taxdb_path: Path) -> int:
             print("-" * 60)
 
             for result in results:
-                try:
-                    taxon = Taxon(int(result["taxid"]), taxdb)
-                    score_str = f"({result['score']:.1f}%)" if float(result["score"]) < 100 else ""
-                    print(f"{result['taxid']:<10} {taxon.rank:<15} {result['name']} {score_str}")
-                except Exception as e:
-                    logging.warning(f"Error displaying result {result['taxid']}: {e}")
-        else:
-            taxdb = TaxSQLite(taxdb_path)
-            # Use TaxSQLite's fuzzy search (prints directly)
-            taxdb.fuzzy_search(args.keyword, limit=args.limit)
-
-        if hasattr(taxdb, "close"):
-            taxdb.close()  # pyright: ignore[reportAttributeAccessIssue]
+                node = taxdb.get_node(result["taxid"])
+                score_str = f"({result['score']:.1f}%)" if result["score"] < 100 else ""
+                print(f"{result['taxid']:<10} {node.rank:<15} {result['name']} {score_str}")
 
         return 0
 

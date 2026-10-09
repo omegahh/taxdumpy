@@ -137,7 +137,8 @@ tests/
 #### Database Layer
 
 **TaxonomyDatabase** (`database.py`): Abstract base class defining the consistent API
-- Abstract methods: `get_node()`, `fuzzy_search()`, `_rapid_fuzz()`, `__len__()`, `__repr__()`
+- Abstract methods: `get_node()`, `_rapid_fuzz()`, `__len__()`, `__repr__()`
+- Shared `search()` returns structured results; `fuzzy_search()` prints them
 - Shared methods: `_validate_taxid()` - validates and converts taxid to integer
 - Abstract cached properties: `all_names`, `name2taxid`, `delnodes`, `max_taxid_strlen`, `max_rank_strlen`
 - Context manager support for connection management
@@ -271,9 +272,6 @@ Building a new cache from source requires NCBI taxdump files:
 
 These issues are still present in the checked-in implementation. Recheck this
 section when the corresponding code or tests change.
-
-**`cli.py` still reaches into backend internals** (`_rapid_fuzz` for structured
-search results), so the stable CLI and backend APIs are not fully separated.
 
 **Test gaps**: `tests/test_functions.py` still needs broader tests for rank
 helpers, especially `get_all_ranks` and `find_rank_in_lineage`.

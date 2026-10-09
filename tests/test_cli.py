@@ -1,9 +1,13 @@
 """Tests for CLI functionality."""
 
+import sqlite3
 import sys
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from taxdumpy import TaxDbError, TaxSQLite
 from taxdumpy.cli import _params_parser, main
 
 
@@ -134,6 +138,15 @@ class TestCLI:
             result = main(args)
 
         assert result == 0
+
+    def test_search_failure_returns_error_and_closes_database(self, source_dir, capsys):
+        db = TaxSQLite(source_dir)
+        with patch("taxdumpy.cli.TaxSQLite", return_value=db):
+            with patch.object(db, "search", side_effect=TaxDbError("Search failed")):
+                assert main(["search", "-d", str(source_dir), "human"]) == 1
+        with pytest.raises(sqlite3.ProgrammingError):
+            db.get_node(9606)
+        assert "Search failed" in capsys.readouterr().err
 
     def test_main_search_invalid_limit_returns_error(self, sample_taxdump_dir):
         assert main(["search", "-d", str(sample_taxdump_dir), "--limit", "0", "human"]) == 1

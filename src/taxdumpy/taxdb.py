@@ -6,14 +6,13 @@ Created: 2025-06-30 19:51:00
 
 import logging
 import pickle
-import re
 from functools import cached_property
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
 from rapidfuzz import fuzz, process
 
-from taxdumpy.ansi import m_color, u_str
+from taxdumpy.ansi import u_str
 from taxdumpy.basic import (
     Node,
     TaxDbError,
@@ -22,7 +21,7 @@ from taxdumpy.basic import (
     ValidationError,
 )
 from taxdumpy.cache import atomic_pickle_dump, cache_is_stale, source_signature
-from taxdumpy.database import TaxonomyDatabase
+from taxdumpy.database import SearchResult, TaxonomyDatabase
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -526,7 +525,7 @@ class TaxDb(TaxonomyDatabase):
         else:
             return "Use search function to find organisms by name"
 
-    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[dict[str, str | int]]:
+    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[SearchResult]:
         """
         Perform fuzzy search on organism names.
 
@@ -566,34 +565,3 @@ class TaxDb(TaxonomyDatabase):
         except Exception as e:
             logger.error(f"Error during fuzzy search: {e}")
             raise TaxDbError(f"Fuzzy search failed: {str(e)}")
-
-    def fuzzy_search(self, query: str, limit: int = 10) -> None:
-        """
-        Print fuzzy search results to console.
-
-        Args:
-            query: Search keyword
-            limit: Maximum number of results to display
-        """
-        try:
-            results = self._rapid_fuzz(query, limit)
-
-            if not results:
-                print(f"No results found for '{query}'")
-                return
-
-            for result in results:
-                tid = result["taxid"]
-                name = str(result["name"])
-                try:
-                    node = self.get_node(tid)
-                    # Highlight matching text. The query is user input, so it
-                    # must be escaped before use as a regex pattern.
-                    col = re.sub(re.escape(query), m_color, name, flags=re.IGNORECASE)
-                    print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
-                except Exception as e:
-                    logger.warning(f"Error displaying result for taxid {tid}: {e}")
-
-        except Exception as e:
-            print(f"Search error: {e}")
-            logger.error(f"Fuzzy search display failed: {e}")

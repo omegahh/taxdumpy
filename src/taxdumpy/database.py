@@ -1,13 +1,21 @@
 """Abstract base class for taxonomy database backends."""
 
+import re
 from abc import ABC, abstractmethod
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Set, TypeVar
+from typing import Any, Callable, Dict, List, Set, TypedDict, TypeVar
 
+from taxdumpy.ansi import m_color
 from taxdumpy.basic import Node, ValidationError
 
 _T = TypeVar("_T")
+
+
+class SearchResult(TypedDict):
+    name: str
+    taxid: int
+    score: float
 
 
 def abstract_cached_property(func: Callable[[Any], _T]) -> "cached_property[_T]":
@@ -69,19 +77,29 @@ class TaxonomyDatabase(ABC):
         """
         pass
 
-    @abstractmethod
     def fuzzy_search(self, query: str, limit: int = 10) -> None:
-        """
-        Print fuzzy search results to console.
+        """Print highlighted matches, propagating validation and database errors."""
+        results = self.search(query, limit)
+        if not results:
+            print(f"No results found for '{query}'")
+            return
+        for result in results:
+            taxid = result["taxid"]
+            node = self.get_node(taxid)
+            name = re.sub(re.escape(query.strip()), m_color, result["name"], flags=re.IGNORECASE)
+            print(f"{taxid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{name}")
 
-        Args:
-            query: Search query string
-            limit: Maximum number of results to display
+    def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+        """Return name, taxid and similarity score for each fuzzy match.
+
+        Scores range from 0 to 100. Each taxid is a distinct candidate even
+        when scientific names are identical. Results are ordered by score.
+        Raises ValidationError for invalid inputs and TaxDbError on failure.
         """
-        pass
+        return self._rapid_fuzz(query, limit)
 
     @abstractmethod
-    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[dict[str, str | int]]:
+    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[SearchResult]:
         """
         Perform fuzzy search on organism names.
 

@@ -110,14 +110,15 @@ rather than to the database size.
 taxdb.fuzzy_search("Escherichia coli", limit=5)
 
 # Or get the matches as data
-results = taxdb._rapid_fuzz("Escherichia coli", limit=5)
+results = taxdb.search("Escherichia coli", limit=5)
 for match in results:
     print(f"{match['name']} (TaxID: {match['taxid']}, Score: {match['score']})")
 ```
 
-> `_rapid_fuzz` returns structured results but is private; only `fuzzy_search`
-> (which prints) is part of the stable API. If you need matches as data, pin your
-> version or open an issue.
+`search` returns dictionaries containing `name`, `taxid`, and a `score` from
+0 to 100. It preserves separate taxa sharing a name and reuses its candidate
+index across queries. `fuzzy_search` prints the results. Both methods propagate
+validation and database errors to callers.
 
 ### Rank Codes and Grouping
 
