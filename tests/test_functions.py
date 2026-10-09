@@ -10,9 +10,15 @@ from taxdumpy.functions import (
     LEVEL2RANK,
     RANK2LEVEL,
     RANKNAMES,
+    get_canonical_ranks,
+    get_closest_rank,
+    get_rank_distance,
+    get_rank_or_closest,
+    get_rank_taxid,
     group_taxids_by_rank,
     upper_rank_id,
 )
+from taxdumpy.ranks import EXTENDED_RANKS, MPA_CODES, RANK_CODES
 
 
 class TestFunctions:
@@ -36,7 +42,11 @@ class TestFunctions:
         # Check mappings are consistent
         for rank in RANKNAMES:
             level = RANK2LEVEL[rank]
-            assert LEVEL2RANK[level] == rank
+            assert RANK2LEVEL[LEVEL2RANK[level]] == level
+
+        assert set(RANKNAMES) == set(RANK_CODES) == set(MPA_CODES)
+        assert set(RANKNAMES) <= set(EXTENDED_RANKS)
+        assert all(str(RC(code)) == code for code in RANK_CODES.values())
 
     def test_upper_rank_id_valid_ranks(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id with valid ranks."""
@@ -108,8 +118,8 @@ class TestFunctions:
         ranks = list(LEVEL2RANK.keys())
 
         # Should be consecutive integers starting from 0
-        assert sorted(levels) == list(range(len(RANKNAMES)))
-        assert sorted(ranks) == list(range(len(RANKNAMES)))
+        assert sorted(set(levels)) == list(range(len(LEVEL2RANK)))
+        assert sorted(ranks) == list(range(len(LEVEL2RANK)))
 
         # Species should be level 0 (most specific)
         assert RANK2LEVEL["species"] == 0
@@ -117,6 +127,34 @@ class TestFunctions:
         # Higher taxonomic levels should have higher numbers
         assert RANK2LEVEL["genus"] > RANK2LEVEL["species"]
         assert RANK2LEVEL["family"] > RANK2LEVEL["genus"]
+
+    def test_domain_and_superkingdom_are_same_level(self, sample_taxdb):
+        human = Taxon(9606, sample_taxdb)
+        for rank in ("domain", "superkingdom"):
+            assert get_rank_taxid(human, rank) == 2759
+            assert upper_rank_id(human, sample_taxdb, rank) == 2759
+            assert get_closest_rank(human, rank) == (2759, "domain")
+            assert get_rank_or_closest(human, rank, max_distance=0) == 2759
+            assert group_taxids_by_rank([9606], rank, sample_taxdb) == {2759: [9606]}
+        assert get_rank_distance("domain", "superkingdom") == 0
+        assert get_rank_distance("kingdom", "domain") == 1
+
+    def test_realm_rank_codes_and_grouping(self, sample_taxdb):
+        virus = Taxon(2585030, sample_taxdb)
+        realm = get_rank_taxid(virus, "realm")
+        assert realm == 2559587
+        assert get_canonical_ranks(virus)["realm"] == realm
+        assert Taxon(realm, sample_taxdb).rc == RC("R")
+        assert virus.mpa_repr == "r__Riboviria"
+        assert group_taxids_by_rank([2585030], "realm", sample_taxdb) == {realm: [2585030]}
+        assert group_taxids_by_rank([2585030], "root", sample_taxdb) == {1: [2585030]}
+
+    def test_legacy_superkingdom_resolves_domain_alias(self, sample_taxdb):
+        node = sample_taxdb.get_node(2759)
+        sample_taxdb._taxid2nodes[2759] = replace(node, rank="superkingdom")
+        human = Taxon(9606, sample_taxdb)
+        assert get_rank_taxid(human, "domain") == 2759
+        assert get_closest_rank(human, "domain") == (2759, "superkingdom")
 
     def test_function_imports(self):
         """Test that functions can be imported from package."""

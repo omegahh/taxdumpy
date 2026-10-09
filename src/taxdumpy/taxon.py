@@ -8,34 +8,10 @@ from functools import cached_property
 
 from taxdumpy.ansi import b_str, r_str
 from taxdumpy.basic import RC, Node, TaxDbError
+from taxdumpy.ranks import MPA_CODES as _MPA_CODES
+from taxdumpy.ranks import RANK_CODES as _RANK_CODES
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxsqlite import TaxSQLite
-
-# Single-letter rank codes
-_RANK_CODES = {
-    "superkingdom": "D",
-    "domain": "D",
-    "kingdom": "K",
-    "phylum": "P",
-    "class": "C",
-    "order": "O",
-    "family": "F",
-    "genus": "G",
-    "species": "S",
-}
-
-# MPA-style lowercase codes
-_MPA_CODES = {
-    "superkingdom": "d",
-    "domain": "d",
-    "kingdom": "k",
-    "phylum": "p",
-    "class": "c",
-    "order": "o",
-    "family": "f",
-    "genus": "g",
-    "species": "s",
-}
 
 
 class Taxon:

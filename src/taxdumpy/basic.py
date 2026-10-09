@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-# Canonical rank codes in order from root (highest) to species (lowest)
-_RANKCODE_ORDER = ("R", "D", "K", "P", "C", "O", "F", "G", "S")
+from taxdumpy.ranks import RANKCODE_ORDER as _RANKCODE_ORDER
+
 _RANKCODE_TO_LEVEL = {code: i for i, code in enumerate(_RANKCODE_ORDER)}
 
 

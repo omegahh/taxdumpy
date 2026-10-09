@@ -105,6 +105,7 @@ src/taxdumpy/
 ├── __main__.py          # CLI entry point
 ├── ansi.py              # ANSI color formatting utilities
 ├── basic.py             # Core data structures (Node) and exception hierarchy
+├── ranks.py             # Shared canonical rank names, levels and codes
 ├── database.py          # Abstract base class (TaxonomyDatabase) + factory function
 ├── cache.py             # Source signatures and atomic pickle replacement
 ├── taxdb.py             # Dictionary-based in-memory backend with pickle caching
@@ -199,10 +200,12 @@ TaxdumpyError (base)
 
 #### Rank Functions (`functions.py`)
 
-- `RankName`: `Literal` of the 9 canonical ranks — the single source of truth
-- `RANKNAMES`: derived from `RankName` via `get_args` (species → realm). Add a
-  rank in one place only; do not re-spell the list in a signature
-- `EXTENDED_RANKS`: 31 ranks including sub-ranks (currently unused elsewhere)
+- Rank tables live in `ranks.py` and are re-exported by `functions.py`
+- `RankName` defines 9 levels plus the `domain` alias of `superkingdom`;
+  `RANKNAMES` is derived via `get_args` (species to realm)
+- Realm uses the root-level `R` code to preserve existing integer encodings,
+  and `r__` in MPA output. Root itself is omitted from MPA output
+- `EXTENDED_RANKS`: 32 names including sub-ranks and aliases
 - `upper_rank_id()`: Get taxid at specific canonical rank (strict)
 - `get_rank_taxid()`: Safely get taxid for rank (returns None if not found)
 - `get_canonical_ranks()`: Get all canonical ranks in lineage as dict
@@ -268,18 +271,6 @@ Building a new cache from source requires NCBI taxdump files:
 These issues are still present in the checked-in implementation. Recheck this
 section when the corresponding code or tests change.
 
-**Rank definitions are duplicated** in `RANKNAMES`, `EXTENDED_RANKS`,
-`group_taxids_by_rank`'s local mapping, `_RANK_CODES`, `_MPA_CODES` (`taxon.py`),
-and `_RANKCODE_ORDER` (`basic.py`). This causes live inconsistencies:
-- `domain` appears in the Taxon rank mappings and current test taxdump, but not
-  in the canonical rank list or grouping mapping. Canonical-rank helpers reject
-  or skip it.
-- `realm` is canonical in `RANKNAMES`, but has no Taxon rank code and is omitted
-  from `mpa_repr`.
-
-Keep rank-related changes consistent across these definitions until they are
-consolidated; add a check that canonical ranks and rank codes agree.
-
 **`species_taxid` returns `0` for not-found** where sibling helpers return `None`.
 `0` is falsy but also a plausible-looking taxid.
 
@@ -290,8 +281,7 @@ nearest scan (dict) versus `ORDER BY taxid` (SQLite).
 **`cli.py` still reaches into backend internals** (`_rapid_fuzz` for structured
 search results), so the stable CLI and backend APIs are not fully separated.
 
-**Test gaps**: `tests/test_functions.py` has no direct tests for
-`get_rank_taxid`, `get_canonical_ranks`, `get_closest_rank`, `get_rank_distance`,
-`get_rank_or_closest`, `get_all_ranks`, or `find_rank_in_lineage`.
+**Test gaps**: `tests/test_functions.py` still needs broader tests for rank
+helpers, especially `get_all_ranks` and `find_rank_in_lineage`.
 The full suite measured `functions.py` at 68% coverage and the package at 85%
 in the repository environment during this audit.

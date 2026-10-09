@@ -358,9 +358,13 @@ from taxdumpy import (
 
 # The rank tables live in taxdumpy.functions, not the package root:
 from taxdumpy.functions import RANKNAMES, EXTENDED_RANKS
-# RANKNAMES:      9 canonical ranks, species → realm
-# EXTENDED_RANKS: 31 ranks including sub-ranks
+# RANKNAMES:      9 canonical levels, species → realm (domain/superkingdom are aliases)
+# EXTENDED_RANKS: 32 names including sub-ranks and aliases
 ```
+
+`domain` and `superkingdom` resolve to the same rank level. Realm uses `r__` in
+MPA output and the root-level `R` rank code, preserving existing integer `RC`
+values. Grouping by `root` always selects taxid 1, including viral lineages.
 
 ### Subtree Traversal
 
