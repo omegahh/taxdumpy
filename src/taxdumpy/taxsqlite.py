@@ -157,10 +157,6 @@ class TaxSQLite(TaxonomyDatabase):
                         size INTEGER NOT NULL,
                         mtime_ns INTEGER NOT NULL
                         );
-                    CREATE INDEX idx_names_name        ON names(name);
-                    CREATE INDEX idx_names_taxid       ON names(taxid);
-                    CREATE INDEX idx_names_taxid_class ON names(taxid, name_class);
-                    CREATE INDEX idx_nodes_parent ON nodes(parent);
                     """
             )
 
@@ -170,39 +166,45 @@ class TaxSQLite(TaxonomyDatabase):
             sci_names, eq_names, acr_names = self._import_names()
 
             # 3) Insert Nodes
-            rows_nodes = []
-            with open(self._taxdump_dir / "nodes.dmp", "r") as f:
-                for line in f:
-                    cols = line.split("\t")
-                    taxid = int(cols[0])
-                    parent = int(cols[2])
-                    parent = old2new[parent] if parent in old2new else parent
-                    rank = cols[4]
-                    div_id = int(cols[8])
-                    divc = div2code.get(div_id, f"UNKNOWN_{div_id}")
-                    rows_nodes.append((taxid, parent, rank, divc))
-            c.executemany("INSERT INTO nodes VALUES (?,?,?,?)", rows_nodes)
+            def node_rows():
+                with open(self._taxdump_dir / "nodes.dmp", "r") as f:
+                    for line in f:
+                        cols = line.split("\t")
+                        taxid = int(cols[0])
+                        parent = int(cols[2])
+                        parent = old2new.get(parent, parent)
+                        rank = cols[4]
+                        div_id = int(cols[8])
+                        divc = div2code.get(div_id, f"UNKNOWN_{div_id}")
+                        yield taxid, parent, rank, divc
+
+            c.executemany("INSERT INTO nodes VALUES (?,?,?,?)", node_rows())
 
             # 4) Insert Names
-            rows_names = []
-            for taxid, nm in sci_names.items():
-                rows_names.append((taxid, nm, "scientific name"))
-            for taxid, lst in eq_names.items():
-                for nm in lst:
-                    rows_names.append((taxid, nm, "equivalent name"))
-            for taxid, lst in acr_names.items():
-                for nm in lst:
-                    rows_names.append((taxid, nm, "acronym"))
-            c.executemany("INSERT INTO names VALUES (?,?,?)", rows_names)
+            def name_rows():
+                for taxid, name in sci_names.items():
+                    yield taxid, name, "scientific name"
+                for name_class, names in (("equivalent name", eq_names), ("acronym", acr_names)):
+                    for taxid, values in names.items():
+                        for name in values:
+                            yield taxid, name, name_class
+
+            c.executemany("INSERT INTO names VALUES (?,?,?)", name_rows())
 
             # 5) Insert Legacy Taxids
-            rows_legacy = [(old, new) for old, new in old2new.items()]
-            c.executemany("INSERT INTO merged VALUES (?,?)", rows_legacy)
+            c.executemany("INSERT INTO merged VALUES (?,?)", old2new.items())
 
             # 6) Insert Deleted Taxids, so the database is self-contained and
             #    does not need the .dmp files at query time.
-            c.executemany("INSERT INTO delnodes VALUES (?)", [(t,) for t in self._import_delnodes()])
+            c.executemany("INSERT INTO delnodes VALUES (?)", ((t,) for t in self._import_delnodes()))
             c.executemany("INSERT INTO source_files VALUES (?,?,?)", ((n, *values) for n, values in signature.items()))
+            for statement in (
+                "CREATE INDEX idx_names_name ON names(name)",
+                "CREATE INDEX idx_names_taxid ON names(taxid)",
+                "CREATE INDEX idx_names_taxid_class ON names(taxid, name_class)",
+                "CREATE INDEX idx_nodes_parent ON nodes(parent)",
+            ):
+                c.execute(statement)
             conn.commit()
         except Exception:
             conn.rollback()

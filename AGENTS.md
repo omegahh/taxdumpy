@@ -279,5 +279,6 @@ children indexes; treat returned nodes as read-only until an explicit mutation
 API or immutable node contract is introduced.
 
 **Importer differences**: malformed input handling differs between backends.
-SQLite construction also holds parsed names and node rows in memory, so its
-build uses more memory than steady-state queries.
+SQLite construction still holds parsed names in memory, so its build uses more
+memory than steady-state queries. Node and insert rows are streamed, with
+indexes built after bulk insertion.
