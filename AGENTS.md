@@ -13,6 +13,9 @@ Instructions and verified project notes for agents working in this repository.
 - **Version source**: `src/taxdumpy/__init__.py` (Hatch reads the version from this file)
 - **Python**: 3.10+
 - **License**: MIT
+- **Repository visibility**: GitHub repository `omegahh/taxdumpy` is private.
+  Codecov coverage uploads require a Codecov account and repository token; the
+  current CI upload is non-blocking if Codecov rejects or cannot process it.
 
 ## Development Commands
 
