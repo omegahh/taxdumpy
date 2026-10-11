@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-# Canonical rank codes in order from root (highest) to species (lowest)
-_RANKCODE_ORDER = ("R", "D", "K", "P", "C", "O", "F", "G", "S")
+from taxdumpy.ranks import RANKCODE_ORDER as _RANKCODE_ORDER
+
 _RANKCODE_TO_LEVEL = {code: i for i, code in enumerate(_RANKCODE_ORDER)}
 
 
@@ -33,12 +33,17 @@ class RC(int):
     def __new__(cls, code: str | int):
         if isinstance(code, int):
             value = code
-        elif code and code[0] in _RANKCODE_TO_LEVEL:
+        elif isinstance(code, str) and code and code[0] in _RANKCODE_TO_LEVEL:
             base_level = _RANKCODE_TO_LEVEL[code[0]]
-            depth = int(code[1:]) if len(code) > 1 and code[1:].isdigit() else 0
+            suffix = code[1:]
+            if suffix and (not suffix.isdigit() or int(suffix) > 255):
+                raise ValueError(f"Invalid rank code: {code!r}")
+            depth = int(suffix) if suffix else 0
             value = (base_level << 8) | depth
         else:
             raise ValueError(f"Invalid rank code: {code!r}")
+        if value < 0 or value >> 8 >= len(_RANKCODE_ORDER) or value & 0xFF > 255:
+            raise ValueError(f"Invalid rank code value: {code!r}")
         return super().__new__(cls, value)
 
     def __str__(self) -> str:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from taxdumpy import Taxon
+from taxdumpy import TaxDbError, Taxon, create_database
 from taxdumpy.basic import Node
 
 
@@ -17,6 +17,7 @@ class TestTaxon:
         assert isinstance(taxon.node, Node)
         assert taxon.name == "Homo sapiens"
         assert taxon.rank == "species"
+        assert taxon.rank == "species"
 
     def test_taxon_creation_with_taxsqlite(self, sample_taxsqlite, sample_taxids):
         """Test creating a Taxon with TaxSQLite backend."""
@@ -25,7 +26,29 @@ class TestTaxon:
         assert taxon.taxid == sample_taxids["human"]
         assert isinstance(taxon.node, Node)
         assert taxon.name == "Homo sapiens"
-        assert taxon.rank == "species"
+
+    def test_string_taxid_is_not_marked_legacy(self, sample_taxdb):
+        assert not Taxon("9606", sample_taxdb).is_legacy
+
+    def test_lineage_cycle_is_reported(self, sample_taxdb):
+        sample_taxdb._taxid2nodes[9606].parent = 9605
+        sample_taxdb._taxid2nodes[9605].parent = 9606
+        with pytest.raises(TaxDbError, match="cycle"):
+            Taxon(9606, sample_taxdb)
+
+    @pytest.mark.parametrize("backend", ["dict", "sqlite"])
+    def test_non_root_self_parent_is_reported(self, backend, source_dir):
+        path = source_dir / "nodes.dmp"
+        lines = []
+        for line in path.read_text().splitlines(keepends=True):
+            fields = line.split("\t")
+            if fields[0] == "9605":
+                fields[2] = "9605"
+            lines.append("\t".join(fields))
+        path.write_text("".join(lines))
+        with create_database(source_dir, backend) as db:
+            with pytest.raises(TaxDbError, match="outside the NCBI root"):
+                Taxon(9606, db)
 
     def test_taxon_properties(self, sample_taxdb, sample_taxids):
         """Test various Taxon properties."""
@@ -76,9 +99,16 @@ class TestTaxon:
         assert human_taxon.has_species_level
         assert human_taxon.species_taxid == sample_taxids["human"]
 
-        # Genus level should have species in lineage
-        genus_taxon = Taxon(9605, sample_taxdb)  # Homo genus
-        # May or may not have species depending on lineage structure
+        genus_taxon = Taxon(9605, sample_taxdb)
+        assert not genus_taxon.has_species_level
+        assert genus_taxon.species_taxid is None
+
+    @pytest.mark.parametrize("fixture", ["sample_taxdb", "sample_taxsqlite"])
+    def test_species_taxid_absence_and_merged_ids(self, fixture, request):
+        db = request.getfixturevalue(fixture)
+        assert Taxon(1, db).species_taxid is None
+        assert Taxon(9605, db).species_taxid is None
+        assert Taxon(13770, db).species_taxid == 2161
 
     def test_taxon_string_representation(self, sample_taxdb, sample_taxids):
         """Test string representations of Taxon."""

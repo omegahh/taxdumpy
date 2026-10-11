@@ -6,7 +6,6 @@ Created: 2025-06-30 19:51:00
 
 import logging
 import os
-import re
 import sqlite3
 import tempfile
 from functools import cached_property
@@ -14,9 +13,10 @@ from pathlib import Path
 
 from rapidfuzz import fuzz, process
 
-from taxdumpy.ansi import m_color, u_str
+from taxdumpy.ansi import u_str
 from taxdumpy.basic import Node, TaxidError, ValidationError
-from taxdumpy.database import TaxonomyDatabase
+from taxdumpy.cache import cache_is_stale, source_signature
+from taxdumpy.database import SearchResult, TaxonomyDatabase
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -36,24 +36,23 @@ class TaxSQLite(TaxonomyDatabase):
     # schema is detected and rebuilt instead of failing later on first use.
     REQUIRED_TABLES = ("nodes", "names", "merged", "delnodes")
 
-    def __init__(self, taxdump_dir: Path | str, verbose: bool = False):
+    def __init__(self, taxdump_dir: Path | str, verbose: bool = False, *, rebuild: bool = False):
         # Call parent constructor
         super().__init__(taxdump_dir)
 
         self._verbose = verbose
         self._db_path = self._taxdump_dir / "taxdump.sqlite"
 
-        if not self._db_path.exists():
+        if rebuild or not self._db_path.exists():
             self._create_database()
 
         # open a sqlite connection, and use row_factory for element access, r['name'] for example
         self._conn = sqlite3.connect(self._db_path)
         self._conn.row_factory = sqlite3.Row
         try:
-            if not self._check_tables():
+            if not self._check_tables() or self._cache_is_stale():
                 # An existing file without the expected schema is unusable.
                 self._conn.close()
-                self._db_path.unlink()
                 self._create_database()
                 self._conn = sqlite3.connect(self._db_path)
                 self._conn.row_factory = sqlite3.Row
@@ -103,12 +102,21 @@ class TaxSQLite(TaxonomyDatabase):
         present = {row[0] for row in rows}
         return all(table in present for table in self.REQUIRED_TABLES)
 
+    def _cache_is_stale(self) -> bool:
+        metadata = self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_files'"
+        ).fetchone()
+        signature = None
+        if metadata:
+            signature = {name: (size, mtime) for name, size, mtime in self._conn.execute("SELECT * FROM source_files")}
+        return cache_is_stale(self._db_path, signature)
+
     def __repr__(self):
         repr_str = f"Taxdump (SQLite) Database from {u_str(self._taxdump_dir)}\n"
         repr_str += f"\tImported nodes: {len(self):,}\n"
         merged_num = self._conn.execute("SELECT COUNT(*) FROM merged").fetchone()[0]
         repr_str += f"\tLegacy nodes:   {merged_num:,}\n"
-        delete_num = len(self.delnodes)
+        delete_num = self._conn.execute("SELECT COUNT(*) FROM delnodes").fetchone()[0]
         repr_str += f"\tDeleted nodes:  {delete_num:,}"
         return repr_str
 
@@ -117,6 +125,7 @@ class TaxSQLite(TaxonomyDatabase):
         return self._conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
 
     def _build_database(self, conn: sqlite3.Connection):
+        signature = source_signature(self._taxdump_dir)
         try:
             if self._verbose:
                 print("Build up TAXDUMP SQLite Database...")
@@ -143,10 +152,11 @@ class TaxSQLite(TaxonomyDatabase):
                     CREATE TABLE delnodes (
                         taxid INTEGER PRIMARY KEY
                         );
-                    CREATE INDEX idx_names_name        ON names(name);
-                    CREATE INDEX idx_names_taxid       ON names(taxid);
-                    CREATE INDEX idx_names_taxid_class ON names(taxid, name_class);
-                    CREATE INDEX idx_nodes_parent ON nodes(parent);
+                    CREATE TABLE source_files (
+                        name TEXT PRIMARY KEY,
+                        size INTEGER NOT NULL,
+                        mtime_ns INTEGER NOT NULL
+                        );
                     """
             )
 
@@ -156,38 +166,45 @@ class TaxSQLite(TaxonomyDatabase):
             sci_names, eq_names, acr_names = self._import_names()
 
             # 3) Insert Nodes
-            rows_nodes = []
-            with open(self._taxdump_dir / "nodes.dmp", "r") as f:
-                for line in f:
-                    cols = line.split("\t")
-                    taxid = int(cols[0])
-                    parent = int(cols[2])
-                    parent = old2new[parent] if parent in old2new else parent
-                    rank = cols[4]
-                    div_id = int(cols[8])
-                    divc = div2code.get(div_id, f"UNKNOWN_{div_id}")
-                    rows_nodes.append((taxid, parent, rank, divc))
-            c.executemany("INSERT INTO nodes VALUES (?,?,?,?)", rows_nodes)
+            def node_rows():
+                with open(self._taxdump_dir / "nodes.dmp", "r") as f:
+                    for line in f:
+                        cols = line.split("\t")
+                        taxid = int(cols[0])
+                        parent = int(cols[2])
+                        parent = old2new.get(parent, parent)
+                        rank = cols[4]
+                        div_id = int(cols[8])
+                        divc = div2code.get(div_id, f"UNKNOWN_{div_id}")
+                        yield taxid, parent, rank, divc
+
+            c.executemany("INSERT INTO nodes VALUES (?,?,?,?)", node_rows())
 
             # 4) Insert Names
-            rows_names = []
-            for taxid, nm in sci_names.items():
-                rows_names.append((taxid, nm, "scientific name"))
-            for taxid, lst in eq_names.items():
-                for nm in lst:
-                    rows_names.append((taxid, nm, "equivalent name"))
-            for taxid, lst in acr_names.items():
-                for nm in lst:
-                    rows_names.append((taxid, nm, "acronym"))
-            c.executemany("INSERT INTO names VALUES (?,?,?)", rows_names)
+            def name_rows():
+                for taxid, name in sci_names.items():
+                    yield taxid, name, "scientific name"
+                for name_class, names in (("equivalent name", eq_names), ("acronym", acr_names)):
+                    for taxid, values in names.items():
+                        for name in values:
+                            yield taxid, name, name_class
+
+            c.executemany("INSERT INTO names VALUES (?,?,?)", name_rows())
 
             # 5) Insert Legacy Taxids
-            rows_legacy = [(old, new) for old, new in old2new.items()]
-            c.executemany("INSERT INTO merged VALUES (?,?)", rows_legacy)
+            c.executemany("INSERT INTO merged VALUES (?,?)", old2new.items())
 
             # 6) Insert Deleted Taxids, so the database is self-contained and
             #    does not need the .dmp files at query time.
-            c.executemany("INSERT INTO delnodes VALUES (?)", [(t,) for t in self._import_delnodes()])
+            c.executemany("INSERT INTO delnodes VALUES (?)", ((t,) for t in self._import_delnodes()))
+            c.executemany("INSERT INTO source_files VALUES (?,?,?)", ((n, *values) for n, values in signature.items()))
+            for statement in (
+                "CREATE INDEX idx_names_name ON names(name)",
+                "CREATE INDEX idx_names_taxid ON names(taxid)",
+                "CREATE INDEX idx_names_taxid_class ON names(taxid, name_class)",
+                "CREATE INDEX idx_nodes_parent ON nodes(parent)",
+            ):
+                c.execute(statement)
             conn.commit()
         except Exception:
             conn.rollback()
@@ -200,6 +217,15 @@ class TaxSQLite(TaxonomyDatabase):
             row["name"] for row in self._conn.execute("SELECT name FROM names WHERE name_class='scientific name'")
         ]
         return all_names
+
+    @cached_property
+    def _search_names(self) -> dict[int, str]:
+        return {
+            row["taxid"]: row["name"]
+            for row in self._conn.execute(
+                "SELECT taxid, name FROM names WHERE name_class='scientific name' ORDER BY taxid"
+            )
+        }
 
     @cached_property
     def name2taxid(self) -> dict[str, int]:
@@ -217,12 +243,12 @@ class TaxSQLite(TaxonomyDatabase):
     @cached_property
     def max_taxid_strlen(self) -> int:
         max_taxid = self._conn.execute("SELECT MAX(taxid) AS max_taxid FROM nodes").fetchone()["max_taxid"]
-        return len(str(max_taxid))
+        return len(str(max_taxid)) if max_taxid is not None else 0
 
     @cached_property
     def max_rank_strlen(self) -> int:
         row = self._conn.execute("SELECT MAX(LENGTH(rank)) FROM nodes").fetchone()
-        return row[0]
+        return row[0] or 0
 
     def _import_merged(self) -> dict[int, int]:
         old2new = {}
@@ -287,7 +313,9 @@ class TaxSQLite(TaxonomyDatabase):
             validated_taxid = r1["newtid"]
 
         # Check if taxid has been deleted
-        if validated_taxid in self.delnodes:
+        # A CLI lookup needs one indexed membership check, not a Python set
+        # containing every deleted taxid. Keep delnodes lazy for bulk callers.
+        if self._conn.execute("SELECT 1 FROM delnodes WHERE taxid=?", (validated_taxid,)).fetchone():
             raise TaxidError(
                 original_taxid,
                 f"TaxID {original_taxid} has been deleted from NCBI taxonomy",
@@ -351,7 +379,7 @@ class TaxSQLite(TaxonomyDatabase):
         else:
             return "Use search function to find organisms by name"
 
-    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[dict[str, str | int]]:
+    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[SearchResult]:
         """
         Perform fuzzy search on organism names.
 
@@ -372,7 +400,7 @@ class TaxSQLite(TaxonomyDatabase):
         if not query.strip():
             return []
 
-        if not isinstance(limit, int) or limit < 1:
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
             raise ValidationError("limit", limit, "positive integer")
 
         if limit > 1000:
@@ -380,53 +408,10 @@ class TaxSQLite(TaxonomyDatabase):
 
         try:
             # Perform fuzzy search
-            results = process.extract(query.strip(), self.all_names, scorer=fuzz.WRatio, limit=limit)
-
-            # Format results
-            formatted_results = []
-            for name, score, _ in results:
-                try:
-                    taxid = self.name2taxid[name]
-                    formatted_results.append({"name": name, "taxid": taxid, "score": score})
-                except KeyError:
-                    logger.warning(f"Name '{name}' found in search but not in name2taxid mapping")
-                    continue
-
-            return formatted_results
+            results = process.extract(query.strip(), self._search_names, scorer=fuzz.WRatio, limit=limit)
+            return [{"name": name, "taxid": taxid, "score": score} for name, score, taxid in results]
 
         except Exception as e:
             from taxdumpy.basic import TaxDbError
 
             raise TaxDbError(f"Fuzzy search failed: {str(e)}")
-
-    def fuzzy_search(self, query: str, limit: int = 10) -> None:
-        """
-        Print fuzzy search results to console.
-
-        Args:
-            query: Search query string
-            limit: Maximum number of results to display
-        """
-        try:
-            results = self._rapid_fuzz(query, limit)
-
-            if not results:
-                print(f"No results found for '{query}'")
-                return
-
-            for result in results:
-                tid = result["taxid"]
-                name = str(result["name"])
-                try:
-                    node = self.get_node(tid)
-                    # Highlight matching text. The query is user input, so it
-                    # must be escaped before use as a regex pattern.
-                    col = re.sub(re.escape(query), m_color, name, flags=re.IGNORECASE)
-                    print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
-                except Exception as e:
-                    logger.warning(f"Error displaying result for taxid {tid}: {e}")
-                    continue
-
-        except Exception as e:
-            print(f"Search error: {e}")
-            logger.error(f"Fuzzy search display failed: {e}")

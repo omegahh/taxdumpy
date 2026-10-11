@@ -1,9 +1,13 @@
 """Tests for CLI functionality."""
 
+import sqlite3
 import sys
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from taxdumpy import TaxDbError, TaxSQLite
 from taxdumpy.cli import _params_parser, main
 
 
@@ -95,9 +99,9 @@ class TestCLI:
         output = mock_stdout.getvalue()
         assert "Homo sapiens" in output or "9606" in output
 
-    def test_main_lineage_command_fast(self, sample_taxdump_dir):
+    def test_main_lineage_command_fast(self, fast_cache_dir):
         """Test lineage command with --fast flag."""
-        args = ["lineage", "-d", str(sample_taxdump_dir), "--fast", "9606"]
+        args = ["lineage", "-d", str(fast_cache_dir), "--fast", "9606"]
 
         with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
             result = main(args)
@@ -117,9 +121,9 @@ class TestCLI:
         # Search prints results, so we can't easily assert specific content
         # But it should complete successfully
 
-    def test_main_search_command_fast(self, sample_taxdump_dir):
+    def test_main_search_command_fast(self, fast_cache_dir):
         """Test search command with --fast flag."""
-        args = ["search", "-d", str(sample_taxdump_dir), "--fast", "human"]
+        args = ["search", "-d", str(fast_cache_dir), "--fast", "human"]
 
         with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
             result = main(args)
@@ -134,6 +138,18 @@ class TestCLI:
             result = main(args)
 
         assert result == 0
+
+    def test_search_failure_returns_error_and_closes_database(self, source_dir, capsys):
+        db = TaxSQLite(source_dir)
+        with patch("taxdumpy.cli.TaxSQLite", return_value=db):
+            with patch.object(db, "search", side_effect=TaxDbError("Search failed")):
+                assert main(["search", "-d", str(source_dir), "human"]) == 1
+        with pytest.raises(sqlite3.ProgrammingError):
+            db.get_node(9606)
+        assert "Search failed" in capsys.readouterr().err
+
+    def test_main_search_invalid_limit_returns_error(self, sample_taxdump_dir):
+        assert main(["search", "-d", str(sample_taxdump_dir), "--limit", "0", "human"]) == 1
 
     def test_main_invalid_directory(self, temp_dir):
         """Test behavior with invalid taxdump directory."""
@@ -214,7 +230,9 @@ class TestCLI:
         # Should have called both database constructors
         mock_taxdb.assert_called_once()
         mock_taxsqlite.assert_called_once()
-        mock_taxdb_instance.dump_taxdump.assert_called_once()
+        assert mock_taxdb.call_args.kwargs["rebuild"] is True
+        assert mock_taxsqlite.call_args.kwargs["rebuild"] is True
+        mock_taxdb_instance.dump_taxdump.assert_not_called()
 
     def test_main_lineage_invalid_taxid(self, sample_taxdump_dir):
         """Test lineage command with invalid taxid."""

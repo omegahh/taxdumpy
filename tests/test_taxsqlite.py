@@ -4,12 +4,17 @@ import sqlite3
 
 import pytest
 
-from taxdumpy import TaxidError, TaxSQLite
+from taxdumpy import TaxidError, TaxSQLite, ValidationError
 from taxdumpy.basic import Node
 
 
 class TestTaxSQLite:
     """Test the TaxSQLite class."""
+
+    @pytest.mark.parametrize("path", [None, "", "/tmp/taxdumpy-missing-path"])
+    def test_invalid_directory_is_validation_error(self, path):
+        with pytest.raises(ValidationError):
+            TaxSQLite(path)
 
     def test_taxsqlite_creation(self, sample_taxdump_dir):
         """Test creating a TaxSQLite instance."""
@@ -68,6 +73,14 @@ class TestTaxSQLite:
         assert 3451490 in del_nodes
         assert 3451488 in del_nodes
 
+    def test_single_lookup_does_not_materialize_deleted_taxids(self, sample_taxsqlite):
+        assert sample_taxsqlite.get_node(9606).name == "Homo sapiens"
+        with pytest.raises(TaxidError, match="deleted"):
+            sample_taxsqlite.get_node(3451490)
+        assert "delnodes" not in sample_taxsqlite.__dict__
+        assert "Deleted nodes:" in repr(sample_taxsqlite)
+        assert "delnodes" not in sample_taxsqlite.__dict__
+
     def test_fuzzy_search(self, sample_taxsqlite):
         """Test fuzzy search functionality."""
         # This should print results, not return them
@@ -82,9 +95,17 @@ class TestTaxSQLite:
         sample_taxsqlite.fuzzy_search("Homo sapien")  # Missing 's'
         sample_taxsqlite.fuzzy_search("Eschericia")  # Typo in genus
 
+    def test_rapid_fuzz_returns_all_taxids_for_duplicate_name(self, sample_taxsqlite):
+        results = sample_taxsqlite._rapid_fuzz("Leishmania", limit=10)
+        assert {result["taxid"] for result in results if result["name"] == "Leishmania"} == {5658, 38568}
+
     def test_fuzzy_search_empty_query(self, sample_taxsqlite):
         """Test fuzzy search with empty query."""
         sample_taxsqlite.fuzzy_search("")  # Should handle gracefully
+
+    def test_rapid_fuzz_rejects_boolean_limit(self, sample_taxsqlite):
+        with pytest.raises(ValidationError):
+            sample_taxsqlite._rapid_fuzz("human", limit=True)
 
     def test_database_tables_exist(self, sample_taxsqlite):
         """Test that required database tables exist."""

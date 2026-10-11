@@ -149,3 +149,10 @@ class TestSearchQueryIsNotARegex:
             assert "nothing to repeat" not in captured
             assert "Error displaying result" not in captured
             assert "Search error" not in captured
+
+
+def test_lineage_fast_uses_filtered_pickle(fast_cache_dir, capsys):
+    from taxdumpy.cli import main
+
+    assert main(["lineage", "-d", str(fast_cache_dir), "--fast", "9606"]) == 0
+    assert "Homo sapiens" in capsys.readouterr().out

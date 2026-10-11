@@ -6,14 +6,13 @@ Created: 2025-06-30 19:51:00
 
 import logging
 import pickle
-import re
 from functools import cached_property
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
 from rapidfuzz import fuzz, process
 
-from taxdumpy.ansi import m_color, u_str
+from taxdumpy.ansi import u_str
 from taxdumpy.basic import (
     Node,
     TaxDbError,
@@ -21,7 +20,8 @@ from taxdumpy.basic import (
     TaxidError,
     ValidationError,
 )
-from taxdumpy.database import TaxonomyDatabase
+from taxdumpy.cache import atomic_pickle_dump, cache_is_stale, source_signature
+from taxdumpy.database import SearchResult, TaxonomyDatabase
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -51,23 +51,25 @@ class TaxDb(TaxonomyDatabase):
         "names.dmp",
     ]
 
-    def __init__(self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False) -> None:
+    def __init__(
+        self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False, *, rebuild: bool = False
+    ) -> None:
         # Call parent constructor
         super().__init__(taxdump_dir)
 
         # Validate inputs
         self._validate_init_params(taxdump_dir, fast)
+        if fast and rebuild:
+            raise ValidationError("rebuild", rebuild, "build_fast_cache(taxids) to rebuild a filtered cache")
 
         self._fast = fast
         self._verbose = verbose
+        self._rebuild = rebuild
 
         # Set up file paths
         self._taxdbf = [self._taxdump_dir / filename for filename in self.REQUIRED_FILES]
         self._mrgef, self._delnf, self._divsf, self._nodef, self._namef = self._taxdbf
         self._pickle = self._taxdump_dir / ("taxdump_fast.pickle" if fast else "taxdump.pickle")
-
-        # Check files exist before proceeding
-        self._check_taxdump()
 
         try:
             if self._verbose:
@@ -97,23 +99,6 @@ class TaxDb(TaxonomyDatabase):
 
     def _check_taxdump(self) -> None:
         """Check that required taxdump files exist and are readable."""
-        # If pickle exists and is newer than source files, we're good
-        if self._pickle.is_file():
-            try:
-                # Quick validation that pickle is readable
-                with open(self._pickle, "rb") as f:
-                    # Just read the first few bytes to check format
-                    pickle.load(f)
-                logger.debug(f"Found valid pickle file: {self._pickle}")
-                return
-            except (pickle.PickleError, EOFError, OSError) as e:
-                logger.warning(f"Pickle file corrupted, will rebuild from source: {e}")
-                # Remove corrupted pickle
-                try:
-                    self._pickle.unlink()
-                except OSError:
-                    pass
-
         # Check that all required files exist
         missing_files = []
         corrupted_files = []
@@ -160,22 +145,70 @@ class TaxDb(TaxonomyDatabase):
         return len(self._taxid2nodes)
 
     def _load_taxdump(self):
-        if self._pickle.is_file():
-            with open(self._pickle, "rb") as fin:
-                taxid2nodes, old2news, del_taxids = pickle.load(fin)
-        else:
-            taxid2nodes, old2news, del_taxids = self._import_nodes()
-            # Save the imported data to pickle for future use
+        if self._pickle.is_file() and not self._rebuild:
             try:
-                self._save_pickle(taxid2nodes, old2news, del_taxids)
-            except Exception as e:
-                logger.warning(f"Failed to save pickle file: {e}")
+                with open(self._pickle, "rb") as fin:
+                    data = pickle.load(fin)
+                if isinstance(data, dict):
+                    if data.get("format_version") != 1:
+                        raise ValueError("Unsupported pickle cache version")
+                    taxid2nodes, old2news, del_taxids = data["nodes"], data["merged"], data["deleted"]
+                    signature = data["sources"]
+                else:
+                    # Accept the original three-part pickle format.
+                    taxid2nodes, old2news, del_taxids = data
+                    signature = None
+                if (
+                    not isinstance(taxid2nodes, dict)
+                    or not isinstance(old2news, dict)
+                    or not isinstance(del_taxids, set)
+                ):
+                    raise ValueError("Invalid pickle cache structure")
+                if not cache_is_stale(self._pickle, signature):
+                    self._source_signature = signature if signature is not None else source_signature(self._taxdump_dir)
+                    logger.debug(f"Loaded valid pickle file: {self._pickle}")
+                    return taxid2nodes, old2news, del_taxids
+                logger.info("Taxdump sources changed; rebuilding cache")
+            except (
+                pickle.PickleError,
+                EOFError,
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                ImportError,
+            ) as e:
+                logger.warning(f"Pickle file corrupted, will rebuild from source: {e}")
+
+        if self._fast:
+            raise TaxdumpFileError(
+                self._pickle.name,
+                "Fast cache is missing, stale or unreadable",
+                "Create it with taxdumpy cache -d PATH -f FILE before using fast=True",
+            )
+
+        # Validate source files only when a cache is absent or unusable.
+        self._check_taxdump()
+        self._source_signature = source_signature(self._taxdump_dir)
+        taxid2nodes, old2news, del_taxids = self._import_nodes()
+        # Save the imported data to pickle for future use
+        try:
+            self._save_pickle(taxid2nodes, old2news, del_taxids)
+        except Exception as e:
+            if self._rebuild:
+                raise
+            logger.warning(f"Failed to save pickle file: {e}")
 
         return taxid2nodes, old2news, del_taxids
 
     @cached_property
     def all_names(self) -> List[str]:
         return [node.name for node in self._taxid2nodes.values()]
+
+    @cached_property
+    def _search_names(self) -> dict[int, str]:
+        return {taxid: node.name for taxid, node in self._taxid2nodes.items()}
 
     @cached_property
     def name2taxid(self) -> Dict[str, int]:
@@ -187,11 +220,11 @@ class TaxDb(TaxonomyDatabase):
 
     @cached_property
     def max_taxid_strlen(self) -> int:
-        return len(str(max(self._taxid2nodes.keys())))
+        return len(str(max(self._taxid2nodes))) if self._taxid2nodes else 0
 
     @cached_property
     def max_rank_strlen(self) -> int:
-        return max(len(n.rank) for n in self._taxid2nodes.values())
+        return max((len(n.rank) for n in self._taxid2nodes.values()), default=0)
 
     def _import_merged(self) -> Dict[int, int]:
         """Import merged taxid mappings with error handling."""
@@ -379,14 +412,18 @@ class TaxDb(TaxonomyDatabase):
 
         return taxid2nodes, old2news, del_taxids
 
-    def _save_pickle(self, taxid2nodes, old2news, del_taxids):
+    def _save_pickle(self, taxid2nodes, old2news, del_taxids, *, path=None):
         """Save processed data to pickle file."""
-        with open(self._pickle, "wb") as fout:
-            pickle.dump(
-                [taxid2nodes, old2news, del_taxids],
-                fout,
-                protocol=pickle.HIGHEST_PROTOCOL,
-            )
+        atomic_pickle_dump(
+            path or self._pickle,
+            {
+                "format_version": 1,
+                "sources": self._source_signature,
+                "nodes": taxid2nodes,
+                "merged": old2news,
+                "deleted": del_taxids,
+            },
+        )
         logger.debug(f"Saved pickle file: {self._pickle}")
 
     def dump_taxdump(self):
@@ -394,6 +431,38 @@ class TaxDb(TaxonomyDatabase):
         print(f"Writing to {self._pickle}")
         self._save_pickle(self._taxid2nodes, self._old2news, self.delnodes)
         print("Taxdump dumped!")
+
+    def build_fast_cache(self, taxids) -> int:
+        """Cache selected taxids, their ancestors and descendants; return the node count.
+
+        Resolve and validate every selection before writing. Descending multiple
+        overlapping subtrees visits each node once, after one database-wide scan.
+        Call this on a full database, then open TaxDb(path, fast=True) to reuse it.
+        """
+        from taxdumpy.functions import build_children_index
+        from taxdumpy.taxon import Taxon
+
+        if self._fast:
+            raise ValidationError("database", "fast", "a full TaxDb instance")
+        roots = {self.get_node(taxid).taxid for taxid in taxids}
+        if not roots:
+            raise ValidationError("taxids", roots, "at least one existing taxid")
+        kept = set()
+        for root in roots:
+            kept.update(Taxon(root, self).taxid_lineage)
+        children = build_children_index(self)
+        visited = set(roots)
+        pending = list(roots)
+        while pending:
+            taxid = pending.pop()
+            for child in children.get(taxid, ()):
+                if child not in visited:
+                    visited.add(child)
+                    pending.append(child)
+        kept.update(visited)
+        nodes = {taxid: self._taxid2nodes[taxid] for taxid in sorted(kept)}
+        self._save_pickle(nodes, self._old2news, self.delnodes, path=self._taxdump_dir / "taxdump_fast.pickle")
+        return len(nodes)
 
     def get_node(self, taxid: int | str) -> Node:
         """
@@ -456,7 +525,7 @@ class TaxDb(TaxonomyDatabase):
         else:
             return "Use search function to find organisms by name"
 
-    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[dict[str, str | int]]:
+    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[SearchResult]:
         """
         Perform fuzzy search on organism names.
 
@@ -478,7 +547,7 @@ class TaxDb(TaxonomyDatabase):
             logger.warning("Empty search query provided")
             return []
 
-        if not isinstance(limit, int) or limit < 1:
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
             raise ValidationError("limit", limit, "positive integer")
 
         if limit > 1000:
@@ -487,17 +556,8 @@ class TaxDb(TaxonomyDatabase):
 
         try:
             # Perform fuzzy search
-            results = process.extract(query.strip(), self.all_names, scorer=fuzz.WRatio, limit=limit)
-
-            # Format results
-            formatted_results = []
-            for name, score, _ in results:
-                try:
-                    taxid = self.name2taxid[name]
-                    formatted_results.append({"name": name, "taxid": taxid, "score": score})
-                except KeyError:
-                    logger.warning(f"Name '{name}' found in search but not in name2taxid mapping")
-                    continue
+            results = process.extract(query.strip(), self._search_names, scorer=fuzz.WRatio, limit=limit)
+            formatted_results = [{"name": name, "taxid": taxid, "score": score} for name, score, taxid in results]
 
             logger.debug(f"Fuzzy search for '{query}' returned {len(formatted_results)} results")
             return formatted_results
@@ -505,34 +565,3 @@ class TaxDb(TaxonomyDatabase):
         except Exception as e:
             logger.error(f"Error during fuzzy search: {e}")
             raise TaxDbError(f"Fuzzy search failed: {str(e)}")
-
-    def fuzzy_search(self, query: str, limit: int = 10) -> None:
-        """
-        Print fuzzy search results to console.
-
-        Args:
-            query: Search keyword
-            limit: Maximum number of results to display
-        """
-        try:
-            results = self._rapid_fuzz(query, limit)
-
-            if not results:
-                print(f"No results found for '{query}'")
-                return
-
-            for result in results:
-                tid = result["taxid"]
-                name = str(result["name"])
-                try:
-                    node = self.get_node(tid)
-                    # Highlight matching text. The query is user input, so it
-                    # must be escaped before use as a regex pattern.
-                    col = re.sub(re.escape(query), m_color, name, flags=re.IGNORECASE)
-                    print(f"{tid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{col}")
-                except Exception as e:
-                    logger.warning(f"Error displaying result for taxid {tid}: {e}")
-
-        except Exception as e:
-            print(f"Search error: {e}")
-            logger.error(f"Fuzzy search display failed: {e}")

@@ -2,7 +2,7 @@
 
 import pytest
 
-from taxdumpy.basic import Node, TaxDbError, TaxidError, TaxRankError
+from taxdumpy.basic import RC, Node, TaxDbError, TaxidError, TaxRankError
 
 
 class TestNode:
@@ -27,6 +27,13 @@ class TestNode:
         assert node.equal is None
         assert node.acronym == "HS"
         assert node.division == "Mammals"
+
+
+class TestRCValidation:
+    @pytest.mark.parametrize("code", ["Sabc", "S-1", "S256", 2304, -1])
+    def test_rejects_invalid_codes(self, code):
+        with pytest.raises(ValueError):
+            RC(code)
 
     def test_node_with_slots(self):
         """Test that Node uses __slots__ for memory efficiency."""

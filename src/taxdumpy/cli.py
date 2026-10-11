@@ -3,11 +3,8 @@
 import argparse
 import logging
 import os
-import pickle
 import sys
 from pathlib import Path
-
-from tqdm import tqdm
 
 from taxdumpy import __version__
 from taxdumpy.basic import (
@@ -243,6 +240,8 @@ def main(args: list[str] | None = None) -> int:
 
         # Execute the requested command
         try:
+            if parsed_args.command == "search" and (parsed_args.limit < 1 or parsed_args.limit > 1000):
+                raise ValidationError("limit", parsed_args.limit, "integer between 1 and 1000")
             if parsed_args.command == "cache":
                 return _handle_cache_command(parsed_args, taxdb_path)
             elif parsed_args.command == "lineage":
@@ -274,16 +273,12 @@ def _handle_cache_command(args, taxdb_path: Path) -> int:
             # Build SQLite database
             print("📦 Building SQLite database...")
             sqlite_file = taxdb_path / "taxdump.sqlite"
-            sqlite_file.unlink(missing_ok=True)
-            taxsqlite = TaxSQLite(taxdb_path)
+            taxsqlite = TaxSQLite(taxdb_path, rebuild=True)
             print(f"✅ SQLite database created: {sqlite_file}")
             taxsqlite.close()
             # Build full pickle cache
             print("📦 Building full pickle cache...")
-            pickle_file = taxdb_path / "taxdump.pickle"
-            pickle_file.unlink(missing_ok=True)
-            taxdb = TaxDb(taxdb_path)
-            taxdb.dump_taxdump()
+            taxdb = TaxDb(taxdb_path, rebuild=True)
             print(f"✅ Full pickle cache created with {len(taxdb):,} taxonomy nodes")
         else:
             # Build fast pickle cache with filtered taxids
@@ -329,39 +324,14 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
 
         # Build fast cache
         pickle_file = taxdb_path / "taxdump_fast.pickle"
-        pickle_file.unlink(missing_ok=True)
 
         print("🔄 Loading full taxonomy database...")
         taxdb = TaxDb(taxdb_path)
         print(f"📊 Full database contains {len(taxdb):,} taxids")
 
-        print("🔍 Finding lineages for specified taxids...")
-
-        kept_taxids = []
-        for taxid in tqdm(taxdb._taxid2nodes.keys(), desc="Loop-over all taxids", ncols=80):
-            taxon = Taxon(taxid, taxdb)
-            lineage_taxids = set(taxon.taxid_lineage)
-            if lineage_taxids.intersection(all_taxids):
-                kept_taxids.extend(taxon.taxid_lineage)
-        kept_taxids = set(kept_taxids)
-
-        print(f"📊 Keeping {len(kept_taxids):,} total taxids (including lineages)")
-
-        # Create filtered database
-        kept_taxid2nodes = {k: v for k, v in taxdb._taxid2nodes.items() if k in kept_taxids}
-        # with open("kept_taxids.list", "w") as fout:
-        #     for k, _ in kept_taxid2nodes.items():
-        #         fout.write(f"{k}\n")
-
-        print(f"💾 Writing fast cache to {pickle_file}")
-        with open(pickle_file, "wb") as fout:
-            pickle.dump(
-                [kept_taxid2nodes, taxdb._old2news, taxdb.delnodes],
-                fout,
-                protocol=pickle.HIGHEST_PROTOCOL,
-            )
-
-        print(f"🎉 Fast cache created with {len(kept_taxid2nodes):,} taxonomy nodes!")
+        print("🔍 Finding selected subtrees and ancestors...")
+        count = taxdb.build_fast_cache(all_taxids)
+        print(f"🎉 Fast cache created at {pickle_file} with {count:,} taxonomy nodes!")
         return 0
 
     except Exception as e:
@@ -373,7 +343,8 @@ def _handle_lineage_command(args, taxdb_path: Path) -> int:
     try:
         print(f"🔍 Looking up lineage for TaxID {args.taxid}...")
 
-        with TaxSQLite(taxdb_path) as taxdb:
+        backend = TaxDb(taxdb_path, fast=True) if args.fast else TaxSQLite(taxdb_path)
+        with backend as taxdb:
             taxon = Taxon(args.taxid, taxdb)
             print(taxon.__repr__())
 
@@ -388,12 +359,11 @@ def _handle_search_command(args, taxdb_path: Path) -> int:
     try:
         print(f"🔍 Searching for '{args.keyword}'...")
 
-        # Choose database backend
         if args.fast:
             print("⚡ Using fast mode")
-            taxdb = TaxDb(taxdb_path, fast=True)
-            # Use TaxDb's fuzzy search
-            results = taxdb._rapid_fuzz(args.keyword, limit=args.limit)
+        backend = TaxDb(taxdb_path, fast=True) if args.fast else TaxSQLite(taxdb_path)
+        with backend as taxdb:
+            results = taxdb.search(args.keyword, limit=args.limit)
             if not results:
                 print(f"❌ No results found for '{args.keyword}'")
                 print("💡 Try a different search term or check spelling")
@@ -404,19 +374,9 @@ def _handle_search_command(args, taxdb_path: Path) -> int:
             print("-" * 60)
 
             for result in results:
-                try:
-                    taxon = Taxon(int(result["taxid"]), taxdb)
-                    score_str = f"({result['score']:.1f}%)" if float(result["score"]) < 100 else ""
-                    print(f"{result['taxid']:<10} {taxon.rank:<15} {result['name']} {score_str}")
-                except Exception as e:
-                    logging.warning(f"Error displaying result {result['taxid']}: {e}")
-        else:
-            taxdb = TaxSQLite(taxdb_path)
-            # Use TaxSQLite's fuzzy search (prints directly)
-            taxdb.fuzzy_search(args.keyword, limit=args.limit)
-
-        if hasattr(taxdb, "close"):
-            taxdb.close()  # pyright: ignore[reportAttributeAccessIssue]
+                node = taxdb.get_node(result["taxid"])
+                score_str = f"({result['score']:.1f}%)" if result["score"] < 100 else ""
+                print(f"{result['taxid']:<10} {node.rank:<15} {result['name']} {score_str}")
 
         return 0
 

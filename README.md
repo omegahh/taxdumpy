@@ -11,7 +11,7 @@ _A high-performance Python toolkit for parsing NCBI Taxonomy databases with line
 
 ## Features
 
-- **Fast Parsing**: Optimized loading of NCBI taxdump files with pickle caching for ~3x speedup
+- **Cached Loading**: Parse NCBI taxdump files once, then reuse pickle or SQLite caches
 - **Dual Backends**: In-memory (`TaxDb`) for speed or SQLite (`TaxSQLite`) for memory efficiency
 - **Lineage Resolution**: Complete lineage tracing with automatic handling of merged/deleted nodes
 - **Subtree Traversal**: Walk *down* the tree with `descendants` — every taxid below a given one
@@ -37,7 +37,7 @@ pip install -e .
 **With Development Dependencies:**
 
 ```bash
-pip install -e .[dev]
+pip install -e '.[dev]'
 ```
 
 ## Quick Start
@@ -110,14 +110,15 @@ rather than to the database size.
 taxdb.fuzzy_search("Escherichia coli", limit=5)
 
 # Or get the matches as data
-results = taxdb._rapid_fuzz("Escherichia coli", limit=5)
+results = taxdb.search("Escherichia coli", limit=5)
 for match in results:
     print(f"{match['name']} (TaxID: {match['taxid']}, Score: {match['score']})")
 ```
 
-> `_rapid_fuzz` returns structured results but is private; only `fuzzy_search`
-> (which prints) is part of the stable API. If you need matches as data, pin your
-> version or open an issue.
+`search` returns dictionaries containing `name`, `taxid`, and a `score` from
+0 to 100. It preserves separate taxa sharing a name and reuses its candidate
+index across queries. `fuzzy_search` prints the results. Both methods propagate
+validation and database errors to callers.
 
 ### Rank Codes and Grouping
 
@@ -150,6 +151,10 @@ print(human.mpa_repr)
 
 ## Command Line Interface
 
+By default, `search` and `lineage` use SQLite so individual queries do not load
+the full pickle into memory. `--fast` loads a smaller, filtered pickle instead;
+create that cache first with `cache -f FILE`.
+
 ### Check Version
 
 ```bash
@@ -159,12 +164,16 @@ taxdumpy --version
 ### Cache Database
 
 ```bash
-# Cache full NCBI taxonomy database
+# Rebuild both taxdump.sqlite and taxdump.pickle from source files
 taxdumpy cache -d /path/to/taxdump
 
-# Create fast cache with specific organisms
+# Build taxdump_fast.pickle from selected taxids (one per line), their
+# ancestors, and their descendants; blank lines and # comments are allowed
 taxdumpy cache -d /path/to/taxdump -f important_taxids.txt
 ```
+
+The filtered command loads the full `TaxDb` to build the subset. It does not
+rebuild SQLite. Queries outside the subset require the full database.
 
 ### Search Operations
 
@@ -245,17 +254,57 @@ with TaxSQLite("/path/to/taxdump") as db:
 
 ### Batch Processing
 
+Load the full pickle once and reuse the same instance for all Python queries.
+Its startup cost is paid once per instance, rather than once per taxid.
+
 ```python
 from taxdumpy import TaxDb, Taxon
 
-# Reuse database instance for efficiency
-taxdb = TaxDb("/path/to/taxdump", fast=True)
+# Load all taxa for arbitrary batch queries
+taxdb = TaxDb("/path/to/taxdump")
 
 taxids = [9606, 511145, 7227, 4932]  # Human, E.coli, Fly, Yeast
 for taxid in taxids:
     taxon = Taxon(taxid, taxdb)
     print(f"{taxon.name}: {' > '.join(taxon.name_lineage[:3])}")
 ```
+
+For a known subset, build a filtered cache using the full database, then load
+that smaller cache in subsequent processes:
+
+```python
+count = taxdb.build_fast_cache([9606, 511145, 7227, 4932])
+print(f"Cached {count} nodes, including ancestors and descendants")
+
+subset = TaxDb("/path/to/taxdump", fast=True)
+human = Taxon(9606, subset)
+```
+
+### Cache Freshness and Rebuilding
+
+New caches record source file sizes and modification times. Opening a stale
+full pickle or SQLite cache rebuilds it from the taxdump files. Missing, stale,
+or unreadable filtered caches raise an error; recreate them with `cache -f FILE`
+or `build_fast_cache(taxids)` so the selection is explicit.
+
+Original three-part pickles remain readable, and legacy caches use source
+modification times to detect changes. Valid caches remain usable after the
+source `.dmp` files are removed. Rebuilding requires the source files again.
+
+To force a rebuild from Python:
+
+```python
+from taxdumpy import TaxDb, TaxSQLite
+
+taxdb = TaxDb("/path/to/taxdump", rebuild=True)
+with TaxSQLite("/path/to/taxdump", rebuild=True) as db:
+    print(len(db))
+```
+
+Each cache is replaced atomically only after its new contents are written
+successfully. A failed rebuild preserves the previous file. `rebuild=True`
+cannot be combined with `fast=True`; rebuild filtered caches through the full
+database's `build_fast_cache` method instead.
 
 ### Handling Merged/Legacy TaxIDs
 
@@ -299,19 +348,19 @@ except TaxRankError as e:
 **TaxDb**: In-memory dictionary-based database with pickle caching
 
 ```python
-TaxDb(taxdump_dir: str, fast: bool = False)
+TaxDb(taxdump_dir: Path | str, fast: bool = False, verbose: bool = False, *, rebuild: bool = False)
 ```
 
 **TaxSQLite**: SQLite-based persistent database
 
 ```python
-TaxSQLite(taxdump_dir: str)
+TaxSQLite(taxdump_dir: Path | str, verbose: bool = False, *, rebuild: bool = False)
 ```
 
 **Taxon**: Taxonomic unit with lineage resolution
 
 ```python
-Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
+Taxon(taxid: int | str, taxdb: TaxDb | TaxSQLite)
 
 # Properties
 .name: str                # Scientific name
@@ -329,7 +378,7 @@ Taxon(taxid: int, taxdb: TaxDb | TaxSQLite)
 .mpa_repr: str            # MetaPhlAn-style lineage string
 .is_legacy: bool          # True if taxid was merged
 .has_species_level: bool  # True if lineage contains species rank
-.species_taxid: int       # Taxid at species level, or 0 if none
+.species_taxid: int | None # Taxid at species level, or None if absent (previously 0)
 ```
 
 **Factory Function**
@@ -358,9 +407,17 @@ from taxdumpy import (
 
 # The rank tables live in taxdumpy.functions, not the package root:
 from taxdumpy.functions import RANKNAMES, EXTENDED_RANKS
-# RANKNAMES:      9 canonical ranks, species → realm
-# EXTENDED_RANKS: 31 ranks including sub-ranks
+# RANKNAMES:      9 canonical levels, species → realm (domain/superkingdom are aliases)
+# EXTENDED_RANKS: 32 names including sub-ranks and aliases
 ```
+
+`domain` and `superkingdom` resolve to the same rank level. Realm uses `r__` in
+MPA output and the root-level `R` rank code, preserving existing integer `RC`
+values. Grouping by `root` always selects taxid 1, including viral lineages.
+
+`upper_rank_id` requires the requested higher rank or its subrank to exist in
+the lineage; otherwise it raises `TaxRankError`. Use `get_closest_rank` or
+`get_rank_or_closest` when fallback to a higher canonical rank is desired.
 
 ### Subtree Traversal
 
@@ -394,8 +451,10 @@ from taxdumpy import (
 
 ## Performance Tips
 
-- **Use Fast Mode**: `TaxDb(path, fast=True)` provides ~3x speedup with pre-cached data
-- **Reuse Instances**: Create one `TaxDb` instance and reuse for multiple operations
+- **Single CLI Queries**: Use the default SQLite backend to avoid loading the full pickle
+- **Python Batches**: Load one `TaxDb` instance and reuse it for multiple operations
+- **Filtered Data**: Use `TaxDb(path, fast=True)` after building a subset cache;
+  startup cost and memory use depend on the subset size
 - **Environment Variables**: Set `TAXDB_PATH` to avoid repeating database paths
 - **Choose Backend**: Use `TaxSQLite` for large datasets with limited memory
 - **Batch Operations**: Process multiple TaxIDs in batches rather than individual calls
@@ -426,7 +485,7 @@ from taxdumpy import (
 ```bash
 git clone https://github.com/omegahh/taxdumpy.git
 cd taxdumpy
-pip install -e .[dev]
+pip install -e '.[dev]'
 ```
 
 ### Testing
@@ -453,12 +512,21 @@ ruff check src/ tests/ --fix
 
 ### Release Process
 
-```bash
-# Automated release
-python scripts/release.py --version 1.2.3 --upload
+A pushed `v*` tag creates a GitHub Release. It does not build or publish a
+package to PyPI. Build and upload separately when publishing a release:
 
-# Or manual: create tag and push (GitHub Actions publishes to PyPI)
-git tag v1.2.3 && git push origin v1.2.3
+```bash
+python -m build
+python -m twine upload dist/*
+```
+
+The release helper requires a clean worktree, runs tests and Ruff, updates and
+commits the version, pushes `origin main` and a version tag, removes `dist/`,
+and builds the package. `--upload` also publishes to PyPI. Run it only when
+those repository and remote changes are intended:
+
+```bash
+python scripts/release.py --version 1.2.3 --upload
 ```
 
 ## License

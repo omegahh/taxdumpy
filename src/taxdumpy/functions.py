@@ -4,75 +4,26 @@ Author: Hao Hong (omeganju@gmail.com)
 Created: 2025-07-06 17:07:57
 """
 
-from typing import Literal, get_args
 from weakref import WeakKeyDictionary
 
-from taxdumpy.basic import TaxDbError, TaxRankError, ValidationError
+from taxdumpy.basic import TaxDbError, TaxidError, TaxRankError, ValidationError
 from taxdumpy.database import TaxonomyDatabase
+from taxdumpy.ranks import EXTENDED_RANKS, LEVEL2RANK, RANK2LEVEL, RANK_ALIASES, RANK_CODES, RANKNAMES, RankName
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxon import Taxon
 from taxdumpy.taxsqlite import TaxSQLite
 
-# from taxdumpy.taxsqlite import TaxSQLite
-
-# Canonical phylogenetic ranks, ordered low to high. Single source of truth:
-# RANKNAMES, RANK2LEVEL and LEVEL2RANK are all derived from RankName.
-RankName = Literal[
-    "species",
-    "genus",
-    "family",
-    "order",
-    "class",
-    "phylum",
-    "kingdom",
-    "superkingdom",
-    "realm",
-]
-RANKNAMES: list[str] = list(get_args(RankName))
-RANK2LEVEL = {k: i for i, k in enumerate(RANKNAMES)}
-LEVEL2RANK = {i: k for i, k in enumerate(RANKNAMES)}
-
-# Extended rank names including sub-ranks and common non-canonical ranks
-EXTENDED_RANKS = [
-    "forma",
-    "varietas",
-    "subspecies",
-    "species",
-    "species subgroup",
-    "species group",
-    "subgenus",
-    "genus",
-    "subtribe",
-    "tribe",
-    "subfamily",
-    "family",
-    "superfamily",
-    "parvorder",
-    "infraorder",
-    "suborder",
-    "order",
-    "superorder",
-    "subcohort",
-    "cohort",
-    "infraclass",
-    "subclass",
-    "class",
-    "superclass",
-    "subphylum",
-    "phylum",
-    "superphylum",
-    "subkingdom",
-    "kingdom",
-    "superkingdom",
-    "realm",
-]
-
 
 def upper_rank_id(
     tax: Taxon,
-    taxdb: TaxDb,
+    taxdb: TaxonomyDatabase,
     rank: RankName,
 ) -> int:
+    """Return a higher canonical rank (or its subrank), raising if absent.
+
+    The taxdb argument is retained for compatibility. Use get_closest_rank
+    when falling back to a different rank is appropriate.
+    """
     curr_rank = tax.rank
     if curr_rank not in RANKNAMES:
         raise TaxRankError(
@@ -87,24 +38,10 @@ def upper_rank_id(
     high_level = RANK2LEVEL[rank]
     if high_level <= curr_level:
         raise RuntimeError(f"{rank=} is in lower/equal level than {curr_rank=} in phylogenetic tree")
-    # Get upper rank iteratively
-    if rank in tax.rank_lineage:
-        return tax.taxid_lineage[tax.rank_lineage.index(rank)]
-    elif f"sub{rank}" in tax.rank_lineage:
-        return tax.taxid_lineage[tax.rank_lineage.index(f"sub{rank}")]
-    else:
-        # neither rank nor sub-rank in the lineage
-        temp_level = high_level
-        temp_rank = LEVEL2RANK[temp_level]
-        while temp_level > curr_level:
-            temp_level -= 1
-            temp_rank = LEVEL2RANK[temp_level]
-            if temp_rank in tax.rank_lineage:
-                break
-        jump_taxid = tax.taxid_lineage[tax.rank_lineage.index(temp_rank)]
-        for _ in range(high_level - temp_level):
-            jump_taxid = Taxon(jump_taxid, taxdb).parent
-        return jump_taxid
+    taxid = get_rank_taxid(tax, rank)
+    if taxid is not None:
+        return taxid
+    raise TaxRankError(rank, f"Rank '{rank}' is absent from the lineage of TaxID {tax.taxid}")
 
 
 def get_rank_taxid(
@@ -133,10 +70,13 @@ def get_rank_taxid(
         >>> genus_id = get_rank_taxid(taxon, 'genus')
         >>> family_id = get_rank_taxid(taxon, 'family', include_subrank=True)
     """
-    # Direct lookup
-    if rank in taxon.rank_lineage:
-        idx = taxon.rank_lineage.index(rank)
-        return taxon.taxid_lineage[idx]
+    names = [rank]
+    canonical_rank = RANK_ALIASES.get(rank, rank)
+    if canonical_rank in RANK2LEVEL:
+        names.extend(name for name in RANKNAMES if name != rank and RANK2LEVEL[name] == RANK2LEVEL[canonical_rank])
+    for name in names:
+        if name in taxon.rank_lineage:
+            return taxon.taxid_lineage[taxon.rank_lineage.index(name)]
 
     # Try sub-rank if requested
     if include_subrank:
@@ -205,18 +145,15 @@ def get_closest_rank(
     if target_rank not in RANKNAMES:
         return None, None
 
-    target_level = RANKNAMES.index(target_rank)
+    target_level = RANK2LEVEL[target_rank]
 
     # Search from target level upwards
-    for i in range(target_level, len(RANKNAMES)):
-        rank = RANKNAMES[i]
+    for i in range(target_level, len(LEVEL2RANK)):
+        rank = LEVEL2RANK[i]
         taxid = get_rank_taxid(taxon, rank, include_subrank=include_subranks)
         if taxid is not None:
             # Get actual rank name from lineage
-            if rank in taxon.rank_lineage:
-                return taxid, rank
-            elif include_subranks and f"sub{rank}" in taxon.rank_lineage:
-                return taxid, f"sub{rank}"
+            return taxid, taxon.rank_lineage[taxon.taxid_lineage.index(taxid)]
 
     return None, None
 
@@ -248,16 +185,21 @@ def get_rank_or_closest(
     if rank not in RANKNAMES:
         return None
 
-    target_level = RANKNAMES.index(rank)
+    if max_distance is not None and (
+        isinstance(max_distance, bool) or not isinstance(max_distance, int) or max_distance < 0
+    ):
+        raise ValidationError("max_distance", max_distance, "non-negative integer or None")
+
+    target_level = RANK2LEVEL[rank]
 
     # Determine search range
-    end_level = len(RANKNAMES)
+    end_level = len(LEVEL2RANK)
     if max_distance is not None:
-        end_level = min(target_level + max_distance + 1, len(RANKNAMES))
+        end_level = min(target_level + max_distance + 1, len(LEVEL2RANK))
 
     # Search from target level upwards
     for i in range(target_level, end_level):
-        search_rank = RANKNAMES[i]
+        search_rank = LEVEL2RANK[i]
         taxid = get_rank_taxid(taxon, search_rank, include_subrank=True)
         if taxid is not None:
             return taxid
@@ -347,8 +289,8 @@ def get_rank_distance(
     if rank1 not in RANKNAMES or rank2 not in RANKNAMES:
         return None
 
-    level1 = RANKNAMES.index(rank1)
-    level2 = RANKNAMES.index(rank2)
+    level1 = RANK2LEVEL[rank1]
+    level2 = RANK2LEVEL[rank2]
 
     return abs(level1 - level2)
 
@@ -356,7 +298,7 @@ def get_rank_distance(
 def group_taxids_by_rank(
     taxids: list[int],
     rank: str,
-    taxdb: TaxDb,
+    taxdb: TaxonomyDatabase,
 ) -> dict[int, list[int]]:
     """
     Group taxids by a target rank, using closest ancestor if exact rank is missing.
@@ -382,17 +324,7 @@ def group_taxids_by_rank(
     from taxdumpy.basic import RC
 
     # Map rank name to RC
-    rank_to_code = {
-        "species": "S",
-        "genus": "G",
-        "family": "F",
-        "order": "O",
-        "class": "C",
-        "phylum": "P",
-        "superkingdom": "D",
-        "kingdom": "K",
-        "root": "R",
-    }
+    rank_to_code = {**RANK_CODES, "root": "R"}
 
     if rank not in rank_to_code:
         raise TaxRankError(rank, f"'{rank}' is not a valid rank for grouping", list(rank_to_code.keys()))
@@ -403,11 +335,14 @@ def group_taxids_by_rank(
     for taxid in taxids:
         try:
             taxon = Taxon(taxid, taxdb)
-        except Exception:
+        except (TaxidError, ValidationError):
             continue
 
         # Find first RC <= target (exact match or closest ancestor)
         group_taxid = None
+        if rank == "root":
+            groups.setdefault(taxon.taxid_lineage[-1], []).append(taxid)
+            continue
         for i, rc in enumerate(taxon.rankcode_lineage):
             if rc <= target_rc:
                 group_taxid = taxon.taxid_lineage[i]
@@ -532,12 +467,20 @@ def descendants(taxdb: TaxonomyDatabase, taxid: int | str, max_depth: int | None
         return []
 
     result: list[int] = []
+    visited = {root}
     depth = 1
     while frontier:
-        result.extend(frontier)
+        next_frontier: list[int] = []
+        for node_taxid in frontier:
+            if node_taxid in visited:
+                raise TaxDbError(
+                    "Taxonomy tree contains a cycle",
+                    f"TaxID {node_taxid} was reached more than once below {root}",
+                )
+            visited.add(node_taxid)
+            result.append(node_taxid)
         if max_depth is not None and depth >= max_depth:
             break
-        next_frontier: list[int] = []
         for node_taxid in frontier:
             kids = children.get(node_taxid)
             if kids:

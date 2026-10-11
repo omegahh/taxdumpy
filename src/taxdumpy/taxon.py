@@ -7,35 +7,11 @@ Created: 2025-06-30 19:51:00
 from functools import cached_property
 
 from taxdumpy.ansi import b_str, r_str
-from taxdumpy.basic import RC, Node
+from taxdumpy.basic import RC, Node, TaxDbError
+from taxdumpy.ranks import MPA_CODES as _MPA_CODES
+from taxdumpy.ranks import RANK_CODES as _RANK_CODES
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxsqlite import TaxSQLite
-
-# Single-letter rank codes
-_RANK_CODES = {
-    "superkingdom": "D",
-    "domain": "D",
-    "kingdom": "K",
-    "phylum": "P",
-    "class": "C",
-    "order": "O",
-    "family": "F",
-    "genus": "G",
-    "species": "S",
-}
-
-# MPA-style lowercase codes
-_MPA_CODES = {
-    "superkingdom": "d",
-    "domain": "d",
-    "kingdom": "k",
-    "phylum": "p",
-    "class": "c",
-    "order": "o",
-    "family": "f",
-    "genus": "g",
-    "species": "s",
-}
 
 
 class Taxon:
@@ -46,8 +22,8 @@ class Taxon:
     # @line_profiler.profile
     def __init__(self, taxid: int, taxdb: TaxDb | TaxSQLite):
         # taxid, taxonomy node, and lineage
-        self._taxid = taxid
-        self._node = taxdb.get_node(taxid)
+        self._taxid = taxdb._validate_taxid(taxid)
+        self._node = taxdb.get_node(self._taxid)
         self._lineage = self._find_lineage(taxdb)
 
     @property
@@ -101,8 +77,9 @@ class Taxon:
         return "species" in self.rank_lineage
 
     @property
-    def species_taxid(self) -> int:
-        return self.taxid_lineage[self.rank_lineage.index("species")] if self.has_species_level else 0
+    def species_taxid(self) -> int | None:
+        """Return the species ancestor, or None when the lineage has none."""
+        return self.taxid_lineage[self.rank_lineage.index("species")] if self.has_species_level else None
 
     @property
     def taxid_lineage(self) -> list[int]:
@@ -210,8 +187,20 @@ class Taxon:
 
     def _find_lineage(self, taxdb: TaxDb | TaxSQLite) -> list[Node]:
         lineage = [self.node]
+        seen = {self.node.taxid}
         current_taxid = lineage[-1].taxid
         while lineage[-1].parent != current_taxid:
             current_taxid = lineage[-1].parent
+            if current_taxid in seen:
+                raise TaxDbError(
+                    "Taxonomy lineage contains a cycle",
+                    f"TaxID {current_taxid} was visited more than once while tracing {self.taxid}",
+                )
             lineage.append(taxdb.get_node(current_taxid))
+            seen.add(current_taxid)
+        if lineage[-1].taxid != 1:
+            raise TaxDbError(
+                "Taxonomy lineage terminates outside the NCBI root",
+                f"TaxID {lineage[-1].taxid} is its own parent while tracing {self.taxid}; expected root TaxID 1",
+            )
         return lineage

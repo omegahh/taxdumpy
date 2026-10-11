@@ -85,10 +85,16 @@ class TestTaxDbValidation:
 
     def test_invalid_taxdump_dir_none(self):
         """Test TaxDb with None directory."""
-        with pytest.raises(Exception) as exc_info:  # May be TypeError instead of ValidationError
+        with pytest.raises(ValidationError) as exc_info:
             TaxDb(None)
-        # Just ensure an error is raised for None input
         assert exc_info.value is not None
+
+    @pytest.mark.parametrize("backend", ["sqlite", "dict"])
+    def test_factory_backends_validate_paths(self, backend, temp_dir):
+        from taxdumpy import create_database
+
+        with pytest.raises(ValidationError):
+            create_database(temp_dir / "missing", backend)
 
     def test_invalid_taxdump_dir_empty(self):
         """Test TaxDb with empty directory."""
@@ -190,6 +196,9 @@ class TestTaxDbNodeRetrieval:
         with pytest.raises(ValidationError):
             sample_taxdb.get_node({"taxid": 9606})
 
+        with pytest.raises(ValidationError):
+            sample_taxdb.get_node(True)
+
     def test_get_node_invalid_strings(self, sample_taxdb):
         """Test get_node with invalid string values."""
         with pytest.raises(ValidationError):
@@ -266,6 +275,9 @@ class TestSearchValidation:
 
         with pytest.raises(ValidationError):
             sample_taxdb._rapid_fuzz("test", limit="invalid")
+
+        with pytest.raises(ValidationError):
+            sample_taxdb._rapid_fuzz("test", limit=True)
 
     def test_rapid_fuzz_empty_query(self, sample_taxdb):
         """Test _rapid_fuzz with empty query."""

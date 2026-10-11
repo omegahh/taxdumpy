@@ -1,6 +1,7 @@
 """Tests for API consistency across database backends."""
 
 import pytest
+from rapidfuzz import process
 
 from taxdumpy import TaxDb, TaxonomyDatabase, TaxSQLite, create_database
 from taxdumpy.basic import TaxidError, ValidationError
@@ -98,10 +99,10 @@ class TestFactoryFunction:
         assert "backend" in str(exc_info.value)
         assert "string" in str(exc_info.value)
 
-    def test_kwargs_forwarding(self, sample_taxdump_dir):
+    def test_kwargs_forwarding(self, fast_cache_dir):
         """Test that kwargs are forwarded to backend constructors."""
         # Test TaxDb with fast=True
-        db = create_database(sample_taxdump_dir, "dict", fast=True)
+        db = create_database(fast_cache_dir, "dict", fast=True)
         assert hasattr(db, "_fast")
         assert db._fast is True
 
@@ -109,6 +110,37 @@ class TestFactoryFunction:
 @pytest.mark.parametrize("backend", ["sqlite", "dict"])
 class TestPolymorphicBehavior:
     """Test that both backends behave identically."""
+
+    def test_empty_database_widths(self, backend, source_dir):
+        with create_database(source_dir, backend) as db:
+            if isinstance(db, TaxDb):
+                db._taxid2nodes.clear()
+            else:
+                db._conn.execute("DELETE FROM nodes")
+            assert len(db) == 0
+            assert db.max_taxid_strlen == 0
+            assert db.max_rank_strlen == 0
+
+    def test_repeated_search_reuses_candidates_and_preserves_duplicate_names(self, backend, sample_taxdump_dir):
+        from unittest.mock import patch
+
+        with create_database(sample_taxdump_dir, backend) as db:
+            with patch.object(process, "extract", wraps=process.extract) as extract:
+                first = db._rapid_fuzz("Leishmania", limit=2)
+                second = db._rapid_fuzz("Leishmania", limit=2)
+            assert first == second
+            assert {match["taxid"] for match in first} == {5658, 38568}
+            assert all(match["score"] == 100 for match in first)
+            assert extract.call_args_list[0].args[1] is extract.call_args_list[1].args[1]
+
+    def test_public_search_returns_structured_results(self, backend, sample_taxdump_dir):
+        with create_database(sample_taxdump_dir, backend) as db:
+            assert db.search("Homo sapiens", limit=1) == [{"name": "Homo sapiens", "taxid": 9606, "score": 100.0}]
+            assert db.search("   ") == []
+            with pytest.raises(ValidationError):
+                db.search("human", limit=False)
+            with pytest.raises(ValidationError):
+                db.fuzzy_search("human", limit=False)
 
     def test_get_node_consistent_signature(self, backend, sample_taxdump_dir, sample_taxids):
         """Test get_node method consistency."""

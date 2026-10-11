@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from taxdumpy import TaxDb, TaxSQLite
-from taxdumpy.basic import TaxidError, ValidationError
+from taxdumpy.basic import TaxDbError, TaxidError, ValidationError
 from taxdumpy.functions import build_children_index, descendant_nodes, descendants
 
 
@@ -102,6 +102,12 @@ class TestErrors:
     def test_invalid_taxid(self, db, bad):
         with pytest.raises(ValidationError):
             descendants(db, bad)
+
+    def test_cycle_is_reported(self, sample_taxdb):
+        sample_taxdb._taxid2nodes[561].parent = 562
+        sample_taxdb._taxid2nodes[562].parent = 561
+        with pytest.raises(TaxDbError, match="cycle"):
+            descendants(sample_taxdb, 561)
 
 
 class TestBackendConsistency:

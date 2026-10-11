@@ -1,6 +1,7 @@
 """Tests for TaxDb class."""
 
 import pickle
+from unittest.mock import patch
 
 import pytest
 
@@ -18,9 +19,9 @@ class TestTaxDb:
         assert taxdb._taxdump_dir == sample_taxdump_dir.resolve()
         assert not taxdb._fast
 
-    def test_taxdb_fast_mode(self, sample_taxdump_dir):
+    def test_taxdb_fast_mode(self, fast_cache_dir):
         """Test creating TaxDb in fast mode."""
-        taxdb = TaxDb(sample_taxdump_dir, fast=True)
+        taxdb = TaxDb(fast_cache_dir, fast=True)
         assert taxdb._fast is True
 
     def test_taxdb_length(self, sample_taxdb):
@@ -114,6 +115,10 @@ class TestTaxDb:
         names = [r["name"] for r in results]
         assert any("Homo sapiens" in name for name in names)
 
+    def test_rapid_fuzz_returns_all_taxids_for_duplicate_name(self, sample_taxdb):
+        results = sample_taxdb._rapid_fuzz("Leishmania", limit=10)
+        assert {result["taxid"] for result in results if result["name"] == "Leishmania"} == {5658, 38568}
+
     def test_rapid_fuzz_search_empty_query(self, sample_taxdb):
         """Test fuzzy search with empty query."""
         results = sample_taxdb._rapid_fuzz("", limit=5)
@@ -135,8 +140,8 @@ class TestTaxDb:
         with open(pickle_file, "rb") as f:
             data = pickle.load(f)
 
-        assert isinstance(data, list)
-        assert len(data) == 3  # taxid2nodes, old2new, delnodes
+        assert data["format_version"] == 1
+        assert data["nodes"][9606].name == "Homo sapiens"
 
     def test_missing_taxdump_files(self, temp_dir):
         """Test behavior with missing taxdump files."""
@@ -165,3 +170,16 @@ class TestTaxDb:
         # Should have same data
         assert len(taxdb1) == len(taxdb2)
         assert taxdb1.get_node(9606).name == taxdb2.get_node(9606).name
+
+    def test_existing_pickle_is_deserialized_once(self, sample_taxdump_dir, temp_dir):
+        """Loading an existing cache should not deserialize it as a probe first."""
+        pickle_file = temp_dir / "taxdump.pickle"
+        source_db = TaxDb(sample_taxdump_dir)
+        source_db._pickle = pickle_file
+        source_db.dump_taxdump()
+
+        with patch("taxdumpy.taxdb.pickle.load", wraps=pickle.load) as load:
+            loaded_db = TaxDb(temp_dir)
+
+        assert load.call_count == 1
+        assert loaded_db.get_node(9606).name == "Homo sapiens"
