@@ -92,10 +92,10 @@ class TestTaxDbValidation:
 
     @pytest.mark.parametrize("backend", ["sqlite", "dict"])
     def test_factory_backends_validate_paths(self, backend, temp_dir):
-        from taxdumpy import create_database
+        from taxdumpy import open_database
 
         with pytest.raises(ValidationError):
-            create_database(temp_dir / "missing", backend)
+            open_database(temp_dir / "missing", backend)
 
     def test_invalid_taxdump_dir_empty(self):
         """Test TaxDb with empty directory."""

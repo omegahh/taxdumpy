@@ -201,7 +201,7 @@ class TaxonomyDatabase(ABC):
         self.close()
 
 
-def create_database(taxdump_dir: Path | str, backend: str = "sqlite", **kwargs) -> TaxonomyDatabase:
+def open_database(taxdump_dir: Path | str, backend: str = "sqlite", **kwargs) -> TaxonomyDatabase:
     """
     Open an existing cache with the requested database backend.
 
@@ -211,15 +211,15 @@ def create_database(taxdump_dir: Path | str, backend: str = "sqlite", **kwargs) 
 
     Args:
         taxdump_dir: Path to directory containing caches built from NCBI taxdump files
-        backend: Database backend to use ("sqlite", "dict", or "memory")
+        backend: Database backend to use ("sqlite"/"sql" or "dict"/"memory"/"pickle")
         **kwargs: Backend-specific parameters
 
     Returns:
         TaxonomyDatabase instance
 
     Raises:
-        ValueError: If backend is not supported
-        ValidationError: If parameters are invalid
+        ValidationError: If parameters or the backend are invalid
+        TaxdumpFileError: If the cache is missing, stale, or unreadable
     """
     from taxdumpy.basic import ValidationError
 

@@ -3,8 +3,8 @@
 import pytest
 from rapidfuzz import process
 
-from taxdumpy import TaxDb, TaxonomyDatabase, TaxSQLite, create_database
-from taxdumpy.basic import TaxidError, ValidationError
+from taxdumpy import TaxDb, TaxonomyDatabase, TaxSQLite, open_database
+from taxdumpy.basic import TaxdumpFileError, TaxidError, ValidationError
 
 
 class TestAbstractBaseClass:
@@ -56,55 +56,63 @@ class TestAbstractBaseClass:
 
 
 class TestFactoryFunction:
-    """Test create_database factory function."""
+    """Test opening existing caches with a selected backend."""
 
-    def test_sqlite_backend_creation(self, sample_taxdump_dir):
-        """Test creating SQLite backend via factory."""
-        db = create_database(sample_taxdump_dir, "sqlite")
+    def test_sqlite_backend_opening(self, sample_taxdump_dir):
+        """Test opening the SQLite cache via the factory."""
+        db = open_database(sample_taxdump_dir, "sqlite")
         assert isinstance(db, TaxSQLite)
         assert isinstance(db, TaxonomyDatabase)
         db.close()
 
-    def test_dict_backend_creation(self, sample_taxdump_dir):
-        """Test creating dict backend via factory."""
-        db = create_database(sample_taxdump_dir, "dict")
+    def test_dict_backend_opening(self, sample_taxdump_dir):
+        """Test opening the pickle cache via the factory."""
+        db = open_database(sample_taxdump_dir, "dict")
         assert isinstance(db, TaxDb)
         assert isinstance(db, TaxonomyDatabase)
 
     def test_backend_aliases(self, sample_taxdump_dir):
         """Test backend aliases work correctly."""
         # SQLite aliases
-        db1 = create_database(sample_taxdump_dir, "sql")
+        db1 = open_database(sample_taxdump_dir, "sql")
         assert isinstance(db1, TaxSQLite)
         db1.close()
 
         # Dict aliases
-        db2 = create_database(sample_taxdump_dir, "memory")
+        db2 = open_database(sample_taxdump_dir, "memory")
         assert isinstance(db2, TaxDb)
 
-        db3 = create_database(sample_taxdump_dir, "pickle")
+        db3 = open_database(sample_taxdump_dir, "pickle")
         assert isinstance(db3, TaxDb)
 
     def test_invalid_backend_validation(self, sample_taxdump_dir):
         """Test validation of invalid backend names."""
         with pytest.raises(ValidationError) as exc_info:
-            create_database(sample_taxdump_dir, "invalid_backend")
+            open_database(sample_taxdump_dir, "invalid_backend")
         assert "backend" in str(exc_info.value)
         assert "invalid_backend" in str(exc_info.value)
 
     def test_backend_type_validation(self, sample_taxdump_dir):
         """Test validation of non-string backend parameter."""
         with pytest.raises(ValidationError) as exc_info:
-            create_database(sample_taxdump_dir, 123)
+            open_database(sample_taxdump_dir, 123)
         assert "backend" in str(exc_info.value)
         assert "string" in str(exc_info.value)
 
     def test_kwargs_forwarding(self, fast_cache_dir):
         """Test that kwargs are forwarded to backend constructors."""
         # Test TaxDb with fast=True
-        db = create_database(fast_cache_dir, "dict", fast=True)
+        db = open_database(fast_cache_dir, "dict", fast=True)
         assert hasattr(db, "_fast")
         assert db._fast is True
+
+    @pytest.mark.parametrize("backend, filename", [("sqlite", "taxdump.sqlite"), ("dict", "taxdump.pickle")])
+    def test_missing_cache_is_not_built_from_sources(self, source_dir, backend, filename):
+        cache = source_dir / filename
+        cache.unlink()
+        with pytest.raises(TaxdumpFileError, match="taxdumpy cache"):
+            open_database(source_dir, backend)
+        assert not cache.exists()
 
 
 @pytest.mark.parametrize("backend", ["sqlite", "dict"])
@@ -112,7 +120,7 @@ class TestPolymorphicBehavior:
     """Test that both backends behave identically."""
 
     def test_empty_database_widths(self, backend, source_dir):
-        with create_database(source_dir, backend) as db:
+        with open_database(source_dir, backend) as db:
             if isinstance(db, TaxDb):
                 db._taxid2nodes.clear()
             else:
@@ -124,7 +132,7 @@ class TestPolymorphicBehavior:
     def test_repeated_search_reuses_candidates_and_preserves_duplicate_names(self, backend, sample_taxdump_dir):
         from unittest.mock import patch
 
-        with create_database(sample_taxdump_dir, backend) as db:
+        with open_database(sample_taxdump_dir, backend) as db:
             with patch.object(process, "extract", wraps=process.extract) as extract:
                 first = db._rapid_fuzz("Leishmania", limit=2)
                 second = db._rapid_fuzz("Leishmania", limit=2)
@@ -134,7 +142,7 @@ class TestPolymorphicBehavior:
             assert extract.call_args_list[0].args[1] is extract.call_args_list[1].args[1]
 
     def test_public_search_returns_structured_results(self, backend, sample_taxdump_dir):
-        with create_database(sample_taxdump_dir, backend) as db:
+        with open_database(sample_taxdump_dir, backend) as db:
             assert db.search("Homo sapiens", limit=1) == [{"name": "Homo sapiens", "taxid": 9606, "score": 100.0}]
             assert db.search("   ") == []
             with pytest.raises(ValidationError):
@@ -144,7 +152,7 @@ class TestPolymorphicBehavior:
 
     def test_get_node_consistent_signature(self, backend, sample_taxdump_dir, sample_taxids):
         """Test get_node method consistency."""
-        db = create_database(sample_taxdump_dir, backend)
+        db = open_database(sample_taxdump_dir, backend)
 
         # Both should accept int and string taxids
         node1 = db.get_node(sample_taxids["human"])
@@ -159,7 +167,7 @@ class TestPolymorphicBehavior:
 
     def test_fuzzy_search_consistent_signature(self, backend, sample_taxdump_dir):
         """Test fuzzy_search method consistency."""
-        db = create_database(sample_taxdump_dir, backend)
+        db = open_database(sample_taxdump_dir, backend)
 
         # Both should have same signature and return None
         result = db.fuzzy_search("human", limit=5)
@@ -170,7 +178,7 @@ class TestPolymorphicBehavior:
 
     def test_rapid_fuzz_consistent_signature(self, backend, sample_taxdump_dir):
         """Test _rapid_fuzz method consistency."""
-        db = create_database(sample_taxdump_dir, backend)
+        db = open_database(sample_taxdump_dir, backend)
 
         # Both should return list of dicts with same structure
         results = db._rapid_fuzz("human", limit=3)
@@ -191,7 +199,7 @@ class TestPolymorphicBehavior:
 
     def test_len_method_consistency(self, backend, sample_taxdump_dir):
         """Test __len__ method consistency."""
-        db = create_database(sample_taxdump_dir, backend)
+        db = open_database(sample_taxdump_dir, backend)
 
         length = len(db)
         assert isinstance(length, int)
@@ -202,7 +210,7 @@ class TestPolymorphicBehavior:
 
     def test_properties_consistency(self, backend, sample_taxdump_dir):
         """Test property consistency across backends."""
-        db = create_database(sample_taxdump_dir, backend)
+        db = open_database(sample_taxdump_dir, backend)
 
         # Test all_names property
         all_names = db.all_names
@@ -237,7 +245,7 @@ class TestErrorHandlingConsistency:
 
     def test_validation_error_consistency(self, backend, sample_taxdump_dir):
         """Test that validation errors are consistent."""
-        db = create_database(sample_taxdump_dir, backend)
+        db = open_database(sample_taxdump_dir, backend)
 
         # Both should raise ValidationError for invalid taxid types
         with pytest.raises(ValidationError):
@@ -261,7 +269,7 @@ class TestErrorHandlingConsistency:
 
     def test_taxid_error_consistency(self, backend, sample_taxdump_dir):
         """Test that TaxidError behavior is consistent."""
-        db = create_database(sample_taxdump_dir, backend)
+        db = open_database(sample_taxdump_dir, backend)
 
         # Both should raise TaxidError for non-existent taxids
         with pytest.raises(TaxidError) as exc_info:
@@ -275,7 +283,7 @@ class TestErrorHandlingConsistency:
 
     def test_error_message_format_consistency(self, backend, sample_taxdump_dir, sample_taxids):
         """Test that error messages have consistent format."""
-        db = create_database(sample_taxdump_dir, backend)
+        db = open_database(sample_taxdump_dir, backend)
 
         # Test deleted taxid error messages
         try:
@@ -296,7 +304,7 @@ class TestContextManagerSupport:
     @pytest.mark.parametrize("backend", ["sqlite", "dict"])
     def test_context_manager_protocol(self, backend, sample_taxdump_dir, sample_taxids):
         """Test context manager support."""
-        with create_database(sample_taxdump_dir, backend) as db:
+        with open_database(sample_taxdump_dir, backend) as db:
             assert isinstance(db, TaxonomyDatabase)
 
             # Should be able to use database normally
@@ -308,7 +316,7 @@ class TestContextManagerSupport:
 
     def test_explicit_close(self, sample_taxdump_dir):
         """Test explicit close method."""
-        db = create_database(sample_taxdump_dir, "sqlite")
+        db = open_database(sample_taxdump_dir, "sqlite")
 
         # Should have close method
         assert hasattr(db, "close")
@@ -360,8 +368,8 @@ class TestTypeHints:
     def test_return_type_consistency(self, sample_taxdump_dir, sample_taxids):
         """Test that return types match type hints."""
         backends = [
-            create_database(sample_taxdump_dir, "dict"),
-            create_database(sample_taxdump_dir, "sqlite"),
+            open_database(sample_taxdump_dir, "dict"),
+            open_database(sample_taxdump_dir, "sqlite"),
         ]
 
         for db in backends:
@@ -392,7 +400,7 @@ def test_end_to_end_consistency(sample_taxdump_dir, sample_taxids):
     backends = ["sqlite", "dict"]
 
     for backend_name in backends:
-        with create_database(sample_taxdump_dir, backend_name) as db:
+        with open_database(sample_taxdump_dir, backend_name) as db:
             # 1. Get a node by taxid
             human_node = db.get_node(sample_taxids["human"])
             assert human_node.name == "Homo sapiens"

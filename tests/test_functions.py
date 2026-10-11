@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from taxdumpy import TaxDbError, Taxon, create_database
+from taxdumpy import TaxDbError, Taxon, open_database
 from taxdumpy.basic import RC, TaxRankError, ValidationError
 from taxdumpy.functions import (
     LEVEL2RANK,
@@ -25,7 +25,7 @@ from taxdumpy.ranks import EXTENDED_RANKS, MPA_CODES, RANK_CODES
 
 @pytest.fixture(params=["dict", "sqlite"])
 def rank_db(request, sample_taxdump_dir):
-    with create_database(sample_taxdump_dir, request.param) as db:
+    with open_database(sample_taxdump_dir, request.param) as db:
         yield db
 
 

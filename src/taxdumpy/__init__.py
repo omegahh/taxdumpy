@@ -12,7 +12,7 @@ from taxdumpy.basic import (
     TaxRankError,
     ValidationError,
 )
-from taxdumpy.database import TaxonomyDatabase, create_database
+from taxdumpy.database import TaxonomyDatabase, open_database
 from taxdumpy.functions import (
     build_children_index,
     descendant_nodes,
@@ -47,8 +47,8 @@ __all__ = [
     "Taxon",
     # Rank code
     "RC",
-    # Factory functions
-    "create_database",
+    # Database readers
+    "open_database",
     # Rank utility functions
     "upper_rank_id",
     "get_rank_taxid",

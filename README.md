@@ -76,15 +76,17 @@ print(f"Is legacy: {human.is_legacy}") # False
 
 ### Choosing a Backend for Batch Queries
 
+Use `TaxSQLite` for memory-efficient queries or `TaxDb` for in-memory queries.
+Open the cache once and reuse the same instance throughout the batch:
+
 ```python
-from taxdumpy import create_database, Taxon
+from taxdumpy import TaxSQLite, Taxon
 
 # Build the cache first with: taxdumpy cache -d /path/to/taxdump
-db = create_database("/path/to/taxdump", backend="sqlite")
-# Use backend="dict" for in-memory batch processing.
-
-taxon = Taxon(9606, db)
-print(taxon.name)  # Homo sapiens
+with TaxSQLite("/path/to/taxdump") as db:
+    for taxid in [9606, 511145, 7227]:
+        taxon = Taxon(taxid, db)
+        print(taxon.name)
 ```
 
 ### Subtree Traversal
@@ -388,14 +390,19 @@ Taxon(taxid: int | str, taxdb: TaxDb | TaxSQLite)
 .species_taxid: int | None # Taxid at species level, or None if absent (previously 0)
 ```
 
-**Factory Function for Batch Programs**
+**Opening a Backend for Batch Programs**
+
+`open_database()` selects a reader backend and opens its existing cache.
+Build that cache first with `taxdumpy cache`.
 
 ```python
-from taxdumpy import create_database
+from taxdumpy import Taxon, open_database
 
 # Run `taxdumpy cache -d PATH` before this call.
 # backend: "sqlite", "sql", "dict", "memory", or "pickle"
-db = create_database("/path/to/taxdump", backend="sqlite")
+with open_database("/path/to/taxdump", backend="sqlite") as db:
+    for taxid in [9606, 511145, 7227]:
+        print(Taxon(taxid, db).name)
 ```
 
 ### Rank Functions
