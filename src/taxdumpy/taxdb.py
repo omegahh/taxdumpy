@@ -8,7 +8,7 @@ import logging
 import pickle
 from functools import cached_property
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set
 
 from rapidfuzz import fuzz, process
 
@@ -20,7 +20,7 @@ from taxdumpy.basic import (
     TaxidError,
     ValidationError,
 )
-from taxdumpy.cache import atomic_pickle_dump, cache_is_stale, source_signature
+from taxdumpy.cache import CACHE_FORMAT_VERSION, atomic_pickle_dump, cache_is_stale, source_signature
 from taxdumpy.database import SearchResult, TaxonomyDatabase
 
 # Set up logging
@@ -52,7 +52,7 @@ class TaxDb(TaxonomyDatabase):
 
     def __init__(self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False) -> None:
         self._configure(taxdump_dir, fast, verbose)
-        self._taxid2nodes, self._old2news, self._delnodes = self._load_cached_taxdump()
+        self._taxid2nodes, self._old2news, self._delnodes, self._names_by_class = self._load_cached_taxdump()
 
     def _configure(self, taxdump_dir: Path | str, fast: bool, verbose: bool) -> None:
         """Set up a database reader without creating any cache files."""
@@ -160,24 +160,27 @@ class TaxDb(TaxonomyDatabase):
         try:
             with open(self._pickle, "rb") as fin:
                 data = pickle.load(fin)
-            if isinstance(data, dict):
-                if data.get("format_version") != 1:
-                    raise ValueError("Unsupported pickle cache version")
-                taxid2nodes, old2news, del_taxids = data["nodes"], data["merged"], data["deleted"]
-                signature = data["sources"]
-            else:
-                taxid2nodes, old2news, del_taxids = data
-                signature = None
+            if not isinstance(data, dict) or data.get("format_version") != CACHE_FORMAT_VERSION:
+                raise ValueError("Unsupported pickle cache version; rebuild to include all name classes")
+            taxid2nodes, old2news, del_taxids = data["nodes"], data["merged"], data["deleted"]
+            names_by_class = data["names_by_class"]
+            signature = data["sources"]
             if not isinstance(taxid2nodes, dict) or not isinstance(old2news, dict) or not isinstance(del_taxids, set):
                 raise ValueError("Invalid pickle cache structure")
+            if not isinstance(names_by_class, dict) or not all(
+                isinstance(name_class, str) and isinstance(names, dict) for name_class, names in names_by_class.items()
+            ):
+                raise ValueError("Invalid names cache structure")
             if cache_is_stale(self._pickle, signature):
                 raise TaxdumpFileError(
                     self._pickle.name,
                     "Cache is stale",
-                    f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
+                    f"Run 'taxdumpy cache -d {self._taxdump_dir} -f FILE' to rebuild the filtered cache"
+                    if self._fast
+                    else f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
                 )
             self._source_signature = signature if signature is not None else source_signature(self._taxdump_dir)
-            return taxid2nodes, old2news, del_taxids
+            return taxid2nodes, old2news, del_taxids, names_by_class
         except TaxdumpFileError:
             raise
         except (
@@ -192,8 +195,10 @@ class TaxDb(TaxonomyDatabase):
         ) as e:
             raise TaxdumpFileError(
                 self._pickle.name,
-                ("Fast cache is unreadable" if self._fast else f"Cache is unreadable: {e}"),
-                f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
+                f"Fast cache is unreadable: {e}" if self._fast else f"Cache is unreadable: {e}",
+                f"Run 'taxdumpy cache -d {self._taxdump_dir} -f FILE' to rebuild the filtered cache"
+                if self._fast
+                else f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
             ) from e
 
     @cached_property
@@ -322,9 +327,10 @@ class TaxDb(TaxonomyDatabase):
 
     def _import_names(
         self,
-    ) -> Tuple[Dict[int, str], Dict[int, List[str]], Dict[int, List[str]]]:
-        """Import taxonomic names with error handling."""
-        sci_names, eq_names, acr_names = {}, {}, {}
+    ) -> tuple[dict[int, str], dict[str, dict[int, tuple[str, ...]]]]:
+        """Import scientific names and all alternative name classes."""
+        sci_names = {}
+        names_by_class = {}
         line_num = 0
 
         try:
@@ -350,11 +356,8 @@ class TaxDb(TaxonomyDatabase):
 
                         if name_class == "scientific name":
                             sci_names[taxid] = name
-                        elif name_class == "equivalent name":
-                            eq_names.setdefault(taxid, []).append(name)
-                        elif name_class == "acronym":
-                            acr_names.setdefault(taxid, []).append(name)
-                        # Ignore other name classes
+                        elif name_class:
+                            names_by_class.setdefault(name_class, {}).setdefault(taxid, []).append(name)
 
                     except (ValueError, IndexError) as e:
                         logger.warning(f"Error parsing line {line_num} in {self._namef.name}: {line} ({e})")
@@ -367,17 +370,20 @@ class TaxDb(TaxonomyDatabase):
                 "Check file permissions and encoding",
             )
 
-        logger.debug(
-            f"Loaded {len(sci_names):,} scientific names, {len(eq_names):,} equivalent names, {len(acr_names):,} acronyms"
-        )
-        return sci_names, eq_names, acr_names
+        for names in names_by_class.values():
+            for taxid, values in names.items():
+                names[taxid] = tuple(sorted(set(values)))
+        logger.debug(f"Loaded {len(sci_names):,} scientific names and {len(names_by_class)} alternative name classes")
+        return sci_names, names_by_class
 
     def _import_nodes(self) -> tuple[dict[int, Node], dict[int, int], set[int]]:
         old2news = self._import_merged()
         div2codes = self._import_divcodes()
         del_taxids = self._import_delnodes()
         old_taxids = set(old2news.keys())
-        sci_names, eq_names, acr_names = self._import_names()
+        sci_names, self._names_by_class = self._import_names()
+        eq_names = self._names_by_class.get("equivalent name", {})
+        acr_names = self._names_by_class.get("acronym", {})
         taxid2nodes = {}
         with open(self._nodef, "r") as f:
             for line in f:
@@ -406,16 +412,17 @@ class TaxDb(TaxonomyDatabase):
 
         return taxid2nodes, old2news, del_taxids
 
-    def _save_pickle(self, taxid2nodes, old2news, del_taxids, *, path=None):
+    def _save_pickle(self, taxid2nodes, old2news, del_taxids, *, path=None, names_by_class=None):
         """Save processed data to pickle file."""
         atomic_pickle_dump(
             path or self._pickle,
             {
-                "format_version": 1,
+                "format_version": CACHE_FORMAT_VERSION,
                 "sources": self._source_signature,
                 "nodes": taxid2nodes,
                 "merged": old2news,
                 "deleted": del_taxids,
+                "names_by_class": self._names_by_class if names_by_class is None else names_by_class,
             },
         )
         logger.debug(f"Saved pickle file: {self._pickle}")
@@ -450,8 +457,28 @@ class TaxDb(TaxonomyDatabase):
                     pending.append(child)
         kept.update(visited)
         nodes = {taxid: self._taxid2nodes[taxid] for taxid in sorted(kept)}
-        self._save_pickle(nodes, self._old2news, self.delnodes, path=self._taxdump_dir / "taxdump_fast.pickle")
+        names_by_class = {
+            name_class: {taxid: values for taxid, values in names.items() if taxid in kept}
+            for name_class, names in self._names_by_class.items()
+        }
+        self._save_pickle(
+            nodes,
+            self._old2news,
+            self.delnodes,
+            path=self._taxdump_dir / "taxdump_fast.pickle",
+            names_by_class=names_by_class,
+        )
         return len(nodes)
+
+    def get_names(self, taxid: int | str) -> dict[str, tuple[str, ...]]:
+        """Return scientific and alternative names for a resolved taxid."""
+        node = self.get_node(taxid)
+        result = {"scientific name": (node.name,)}
+        for name_class, names in sorted(self._names_by_class.items()):
+            values = names.get(node.taxid)
+            if values:
+                result[name_class] = values
+        return result
 
     def get_node(self, taxid: int | str) -> Node:
         """

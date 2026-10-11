@@ -22,6 +22,7 @@ class Taxon:
     # @line_profiler.profile
     def __init__(self, taxid: int, taxdb: TaxDb | TaxSQLite):
         # taxid, taxonomy node, and lineage
+        self._taxdb = taxdb
         self._taxid = taxdb._validate_taxid(taxid)
         self._node = taxdb.get_node(self._taxid)
         self._lineage = self._find_lineage(taxdb)
@@ -46,6 +47,31 @@ class Taxon:
     @property
     def name(self) -> str:
         return self.node.name
+
+    @cached_property
+    def names(self) -> dict[str, tuple[str, ...]]:
+        """All NCBI name classes, loaded on first access while the database is open."""
+        return self._taxdb.get_names(self.update_taxid)
+
+    @property
+    def synonyms(self) -> tuple[str, ...]:
+        return self.names.get("synonym", ())
+
+    @property
+    def common_names(self) -> tuple[str, ...]:
+        return self.names.get("common name", ())
+
+    @property
+    def genbank_common_names(self) -> tuple[str, ...]:
+        return self.names.get("genbank common name", ())
+
+    @property
+    def equivalent_names(self) -> tuple[str, ...]:
+        return self.names.get("equivalent name", ())
+
+    @property
+    def acronyms(self) -> tuple[str, ...]:
+        return self.names.get("acronym", ())
 
     @property
     def rank(self) -> str:

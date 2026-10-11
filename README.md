@@ -89,6 +89,41 @@ with TaxSQLite("/path/to/taxdump") as db:
         print(taxon.name)
 ```
 
+### Scientific and Alternative Names
+
+Both backends preserve all name classes from `names.dmp`, including synonyms,
+common names, GenBank common names, equivalent names, acronyms, authorities,
+and type material. Names stay grouped by their original NCBI class, with each
+class holding a sorted tuple of distinct names.
+
+```python
+from taxdumpy import Taxon, open_database
+
+with open_database("/path/to/taxdump") as db:
+    human = Taxon(9606, db)
+    print(human.name)                  # Homo sapiens (scientific name)
+    print(human.genbank_common_names)  # ('human',)
+    print(human.synonyms)              # Tuple of synonyms, or () if absent
+    print(human.common_names)
+    print(human.equivalent_names)
+    print(human.acronyms)
+    print(human.names.get("authority", ()))
+
+    # Query names directly without constructing a Taxon or tracing its lineage.
+    names = db.get_names(9606)  # dict[str, tuple[str, ...]]
+```
+
+Merged taxids use the current taxid's names. `get_names()` omits absent classes;
+the convenience properties return `()` for them. `Taxon.names` loads once on
+first access, so read it while the database is open. The existing singular
+`acronym` property returns a pipe-separated string or `None`; `acronyms` keeps
+each name as a separate value, including names containing a literal pipe.
+
+Rebuild caches made by earlier versions with `taxdumpy cache -d PATH` to include
+the additional names. For a filtered cache, run `taxdumpy cache -d PATH -f FILE`
+again. Older cache formats are rejected with a rebuild instruction. Scientific
+names remain the candidates used by `search()`, `all_names`, and `name2taxid`.
+
 ### Subtree Traversal
 
 ```python
@@ -377,6 +412,12 @@ Taxon(taxid: int | str, taxdb: TaxDb | TaxSQLite)
 .division: str            # NCBI division
 .parent: int              # Parent taxid
 .acronym: str | None      # Acronym, if any
+.names: dict[str, tuple[str, ...]]  # All names grouped by NCBI name class (lazy)
+.synonyms: tuple[str, ...]
+.common_names: tuple[str, ...]
+.genbank_common_names: tuple[str, ...]
+.equivalent_names: tuple[str, ...]
+.acronyms: tuple[str, ...]
 .node: Node               # Underlying node (resolved, if merged)
 .rc: RC                   # Rank code for this taxon
 .lineage: list[Node]      # Complete lineage as Node objects

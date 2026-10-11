@@ -25,6 +25,7 @@ class TestAbstractBaseClass:
         backends = [TaxDb, TaxSQLite]
         required_methods = [
             "get_node",
+            "get_names",
             "fuzzy_search",
             "_rapid_fuzz",
             "__len__",

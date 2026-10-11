@@ -172,7 +172,7 @@ def _params_parser():
     sname_parser = sub_parsers.add_parser(
         "search",
         help="Search for organisms by name",
-        description="Fuzzy search for organisms by scientific or common name",
+        description="Fuzzy search for organisms by scientific name",
     )
     sname_parser.add_argument(
         "-d",

@@ -77,6 +77,18 @@ class TaxonomyDatabase(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_names(self, taxid: int | str) -> dict[str, tuple[str, ...]]:
+        """Return a taxid's names grouped by their NCBI name class.
+
+        Includes the scientific name and every alternative name class present
+        in names.dmp. Values are sorted, distinct tuples; absent classes are
+        omitted. The returned dictionary can be changed without modifying the
+        database. Merged taxids resolve to the current taxid; validation and
+        deleted/unknown taxid errors follow get_node().
+        """
+        raise NotImplementedError
+
     def fuzzy_search(self, query: str, limit: int = 10) -> None:
         """Print highlighted matches, propagating validation and database errors."""
         results = self.search(query, limit)

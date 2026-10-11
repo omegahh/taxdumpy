@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from taxdumpy import TaxDb, TaxSQLite
+from taxdumpy import TaxDb, TaxdumpFileError, TaxSQLite
 from taxdumpy.cache import atomic_pickle_dump
 
 
@@ -72,12 +72,29 @@ def test_cache_can_be_used_without_sources(source_dir, backend):
         assert db.get_node(9606).name == "Homo sapiens"
 
 
-def test_original_pickle_format_remains_readable(source_dir):
+@pytest.mark.parametrize("version", [None, 1])
+def test_old_pickle_requires_cli_rebuild_for_all_names(source_dir, version):
     db = TaxDb(source_dir)
-    atomic_pickle_dump(source_dir / "legacy.pickle", [db._taxid2nodes, db._old2news, db.delnodes])
-    (source_dir / "taxdump.pickle").unlink()
-    (source_dir / "legacy.pickle").replace(source_dir / "taxdump.pickle")
+    data = [db._taxid2nodes, db._old2news, db.delnodes]
+    if version is not None:
+        data = {
+            "format_version": version,
+            "sources": db._source_signature,
+            "nodes": db._taxid2nodes,
+            "merged": db._old2news,
+            "deleted": db.delnodes,
+        }
+    path = source_dir / "taxdump.pickle"
+    atomic_pickle_dump(path, data)
+    before = path.read_bytes()
+    with pytest.raises(TaxdumpFileError, match="taxdumpy cache"):
+        TaxDb(source_dir)
+    assert path.read_bytes() == before
+    from taxdumpy.cli import main
+
+    assert main(["cache", "-d", str(source_dir)]) == 0
     assert TaxDb(source_dir).get_node(9606).name == "Homo sapiens"
+    assert TaxDb(source_dir).get_names(9606)["genbank common name"] == ("human",)
 
 
 def test_stale_fast_cache_requires_explicit_reselection(fast_cache_dir):
@@ -85,5 +102,6 @@ def test_stale_fast_cache_requires_explicit_reselection(fast_cache_dir):
 
     names = fast_cache_dir / "names.dmp"
     names.write_text(names.read_text().replace("Homo sapiens", "Updated Homo sapiens"))
-    with pytest.raises(TaxdumpFileError, match="stale"):
+    with pytest.raises(TaxdumpFileError, match="stale.*") as error:
         TaxDb(fast_cache_dir, fast=True)
+    assert "-f FILE" in str(error.value)

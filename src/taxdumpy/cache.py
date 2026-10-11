@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 SOURCE_FILES = ("merged.dmp", "delnodes.dmp", "division.dmp", "nodes.dmp", "names.dmp")
+CACHE_FORMAT_VERSION = 2
 
 
 def source_signature(directory: Path) -> dict[str, tuple[int, int]]:

@@ -15,7 +15,7 @@ from rapidfuzz import fuzz, process
 
 from taxdumpy.ansi import u_str
 from taxdumpy.basic import Node, TaxdumpFileError, TaxidError, ValidationError
-from taxdumpy.cache import cache_is_stale, source_signature
+from taxdumpy.cache import CACHE_FORMAT_VERSION, cache_is_stale, source_signature
 from taxdumpy.database import SearchResult, TaxonomyDatabase
 
 # Set up logging
@@ -68,6 +68,12 @@ class TaxSQLite(TaxonomyDatabase):
                 raise TaxdumpFileError(
                     self._db_path.name,
                     "Cache is missing required tables or is stale",
+                    f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
+                )
+            if self._conn.execute("PRAGMA user_version").fetchone()[0] != CACHE_FORMAT_VERSION:
+                raise TaxdumpFileError(
+                    self._db_path.name,
+                    "Unsupported cache version; rebuild to include all name classes",
                     f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
                 )
         except TaxdumpFileError:
@@ -184,10 +190,9 @@ class TaxSQLite(TaxonomyDatabase):
                     """
             )
 
-            # 2) Parsing merged.dmp, division.dmp, delnodes.dmp, names.dmp
+            # 2) Parsing merged.dmp and division.dmp
             old2new = self._import_merged()
             div2code = self._import_divcodes()
-            sci_names, eq_names, acr_names = self._import_names()
 
             # 3) Insert Nodes
             def node_rows():
@@ -204,16 +209,8 @@ class TaxSQLite(TaxonomyDatabase):
 
             c.executemany("INSERT INTO nodes VALUES (?,?,?,?)", node_rows())
 
-            # 4) Insert Names
-            def name_rows():
-                for taxid, name in sci_names.items():
-                    yield taxid, name, "scientific name"
-                for name_class, names in (("equivalent name", eq_names), ("acronym", acr_names)):
-                    for taxid, values in names.items():
-                        for name in values:
-                            yield taxid, name, name_class
-
-            c.executemany("INSERT INTO names VALUES (?,?,?)", name_rows())
+            # 4) Stream all name classes without holding names.dmp in memory.
+            c.executemany("INSERT OR IGNORE INTO names VALUES (?,?,?)", self._import_names())
 
             # 5) Insert Legacy Taxids
             c.executemany("INSERT INTO merged VALUES (?,?)", old2new.items())
@@ -229,6 +226,7 @@ class TaxSQLite(TaxonomyDatabase):
                 "CREATE INDEX idx_nodes_parent ON nodes(parent)",
             ):
                 c.execute(statement)
+            c.execute(f"PRAGMA user_version = {CACHE_FORMAT_VERSION}")
             conn.commit()
         except Exception:
             conn.rollback()
@@ -298,20 +296,27 @@ class TaxSQLite(TaxonomyDatabase):
         return s
 
     def _import_names(self):
-        sci_names, eq_names, acr_names = {}, {}, {}
-        with open(self._taxdump_dir / "names.dmp", "r") as f:
-            for L in f:
-                sp = L.split("\t")
-                tid = int(sp[0])
-                name = sp[2]
-                clas = sp[6]
-                if clas == "scientific name":
-                    sci_names[tid] = name
-                elif clas == "equivalent name":
-                    eq_names.setdefault(tid, []).append(name)
-                elif clas == "acronym":
-                    acr_names.setdefault(tid, []).append(name)
-        return sci_names, eq_names, acr_names
+        """Yield every name class for direct insertion into the SQLite cache."""
+        with open(self._taxdump_dir / "names.dmp", "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                parts = line.split("\t")
+                taxid = int(parts[0])
+                name = parts[2].strip()
+                name_class = parts[6].strip()
+                if name and name_class:
+                    yield taxid, name, name_class
+
+    def get_names(self, taxid: int | str) -> dict[str, tuple[str, ...]]:
+        """Return all names, grouped by class, for a resolved taxid."""
+        node = self.get_node(taxid)
+        names = {}
+        for name, name_class in self._conn.execute(
+            "SELECT name, name_class FROM names WHERE taxid=? ORDER BY name_class, name", (node.taxid,)
+        ):
+            names.setdefault(name_class, []).append(name)
+        return {name_class: tuple(values) for name_class, values in names.items()}
 
     def get_node(self, taxid: int | str) -> Node:
         """

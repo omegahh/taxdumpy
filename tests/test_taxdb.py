@@ -141,25 +141,14 @@ class TestTaxDb:
         taxdb1 = TaxDb(sample_taxdump_dir)
         pickle_file = temp_dir / "test.pickle"
         taxdb1._pickle = pickle_file
-        from taxdumpy.cache import atomic_pickle_dump
-
-        atomic_pickle_dump(
-            pickle_file,
-            {
-                "format_version": 1,
-                "sources": taxdb1._source_signature,
-                "nodes": taxdb1._taxid2nodes,
-                "merged": taxdb1._old2news,
-                "deleted": taxdb1.delnodes,
-            },
-        )
+        taxdb1._save_pickle(taxdb1._taxid2nodes, taxdb1._old2news, taxdb1.delnodes)
 
         # Create new instance that should load from pickle
         taxdb2 = TaxDb(sample_taxdump_dir)
         taxdb2._pickle = pickle_file
 
         # Force reload
-        taxdb2._taxid2nodes, taxdb2._old2news, taxdb2._delnodes = taxdb2._load_cached_taxdump()
+        taxdb2._taxid2nodes, taxdb2._old2news, taxdb2._delnodes, taxdb2._names_by_class = taxdb2._load_cached_taxdump()
 
         # Should have same data
         assert len(taxdb1) == len(taxdb2)
@@ -170,18 +159,7 @@ class TestTaxDb:
         pickle_file = temp_dir / "taxdump.pickle"
         source_db = TaxDb(sample_taxdump_dir)
         source_db._pickle = pickle_file
-        from taxdumpy.cache import atomic_pickle_dump
-
-        atomic_pickle_dump(
-            pickle_file,
-            {
-                "format_version": 1,
-                "sources": source_db._source_signature,
-                "nodes": source_db._taxid2nodes,
-                "merged": source_db._old2news,
-                "deleted": source_db.delnodes,
-            },
-        )
+        source_db._save_pickle(source_db._taxid2nodes, source_db._old2news, source_db.delnodes)
 
         with patch("taxdumpy.taxdb.pickle.load", wraps=pickle.load) as load:
             loaded_db = TaxDb(temp_dir)
