@@ -216,3 +216,4 @@ taxdump.sqlite.*.tmp
 .DS_Store
 CLAUDE.md
 .claude
+AGENTS.md

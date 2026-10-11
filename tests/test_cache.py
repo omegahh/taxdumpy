@@ -27,32 +27,37 @@ def test_interrupted_pickle_write_preserves_previous_cache(tmp_path):
     assert pickle.loads(before) == [1, 2, 3]
 
 
-@pytest.mark.parametrize("backend,filename", [(TaxDb, "taxdump.pickle"), (TaxSQLite, "taxdump.sqlite")])
-def test_failed_rebuild_preserves_existing_cache(source_dir, backend, filename):
-    with backend(source_dir):
-        pass
+@pytest.mark.parametrize("filename", ["taxdump.pickle", "taxdump.sqlite"])
+def test_failed_rebuild_preserves_existing_cache(source_dir, filename):
     before = (source_dir / filename).read_bytes()
     (source_dir / "nodes.dmp").write_text("invalid nodes file")
-    with pytest.raises(Exception):
-        backend(source_dir, rebuild=True)
+    from taxdumpy.cli import main
+
+    assert main(["cache", "-d", str(source_dir)]) == 1
     assert (source_dir / filename).read_bytes() == before
     assert not list(source_dir.glob("*.tmp"))
 
 
 def test_explicit_rebuild_reports_write_failure(source_dir):
+    from taxdumpy.cli import main
+
     with patch("taxdumpy.taxdb.atomic_pickle_dump", side_effect=PermissionError("read only")):
-        with pytest.raises(PermissionError):
-            TaxDb(source_dir, rebuild=True)
+        assert main(["cache", "-d", str(source_dir)]) == 1
 
 
 @pytest.mark.parametrize("backend", [TaxDb, TaxSQLite])
-def test_changed_sources_refresh_cache_even_with_preserved_mtime(source_dir, backend):
+def test_changed_sources_require_cli_rebuild_even_with_preserved_mtime(source_dir, backend):
     with backend(source_dir) as db:
         assert db.get_node(9606).name == "Homo sapiens"
     names = source_dir / "names.dmp"
     stat = names.stat()
     names.write_text(names.read_text().replace("Homo sapiens", "Updated Homo sapiens"))
     os.utime(names, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    from taxdumpy.cli import main
+
+    with pytest.raises(Exception):
+        backend(source_dir)
+    assert main(["cache", "-d", str(source_dir)]) == 0
     with backend(source_dir) as db:
         assert db.get_node(9606).name == "Updated Homo sapiens"
 
@@ -69,7 +74,9 @@ def test_cache_can_be_used_without_sources(source_dir, backend):
 
 def test_original_pickle_format_remains_readable(source_dir):
     db = TaxDb(source_dir)
-    atomic_pickle_dump(source_dir / "taxdump.pickle", [db._taxid2nodes, db._old2news, db.delnodes])
+    atomic_pickle_dump(source_dir / "legacy.pickle", [db._taxid2nodes, db._old2news, db.delnodes])
+    (source_dir / "taxdump.pickle").unlink()
+    (source_dir / "legacy.pickle").replace(source_dir / "taxdump.pickle")
     assert TaxDb(source_dir).get_node(9606).name == "Homo sapiens"
 
 

@@ -4,6 +4,7 @@ import pytest
 
 from taxdumpy import TaxDbError, Taxon, create_database
 from taxdumpy.basic import Node
+from taxdumpy.cli import main
 
 
 class TestTaxon:
@@ -46,6 +47,7 @@ class TestTaxon:
                 fields[2] = "9605"
             lines.append("\t".join(fields))
         path.write_text("".join(lines))
+        assert main(["cache", "-d", str(source_dir)]) == 0
         with create_database(source_dir, backend) as db:
             with pytest.raises(TaxDbError, match="outside the NCBI root"):
                 Taxon(9606, db)

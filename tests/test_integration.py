@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from taxdumpy import TaxDb, Taxon, TaxSQLite, upper_rank_id
+from taxdumpy.cli import main
 
 
 @pytest.mark.integration
@@ -125,6 +126,7 @@ class TestIntegration:
                 dst.write_text(src.read_text())
 
             # Build first database
+            assert main(["cache", "-d", str(temp_path1)]) == 0
             taxsqlite1 = TaxSQLite(temp_path1)
             node1 = taxsqlite1.get_node(9606)
             taxsqlite1.close()
@@ -146,6 +148,7 @@ class TestIntegration:
                     dst.write_text(src.read_text())
 
                 # Build second database
+                assert main(["cache", "-d", str(temp_path2)]) == 0
                 taxsqlite2 = TaxSQLite(temp_path2)
                 node2 = taxsqlite2.get_node(9606)
                 taxsqlite2.close()

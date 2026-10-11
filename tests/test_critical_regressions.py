@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from taxdumpy import TaxDb, TaxSQLite
+from taxdumpy.cli import main
 from taxdumpy.database import TaxonomyDatabase
 
 
@@ -22,6 +23,7 @@ def taxdump_copy(tmp_path: Path) -> Path:
     dst.mkdir()
     for f in src.glob("*.dmp"):
         shutil.copy2(f, dst)
+    assert main(["cache", "-d", str(dst)]) == 0
     return dst
 
 
@@ -67,7 +69,11 @@ class TestFailedBuildDoesNotPoison:
     def test_existing_file_without_schema_is_rebuilt(self, taxdump_copy: Path):
         # A truncated/corrupt database should be replaced, not trusted.
         db_path = taxdump_copy / "taxdump.sqlite"
+        db_path.unlink()
         sqlite3.connect(db_path).close()  # valid sqlite file, no tables
+        with pytest.raises(Exception, match="required tables|stale"):
+            TaxSQLite(taxdump_copy)
+        assert main(["cache", "-d", str(taxdump_copy)]) == 0
         with TaxSQLite(taxdump_copy) as db:
             assert len(db) > 0
             assert db.get_node(9606).name == "Homo sapiens"
@@ -78,7 +84,9 @@ class TestFailedBuildDoesNotPoison:
         Older versions built nodes/names/merged only and read delnodes.dmp at
         query time, so such a file is schema-incomplete for current code.
         """
-        conn = sqlite3.connect(taxdump_copy / "taxdump.sqlite")
+        db_path = taxdump_copy / "taxdump.sqlite"
+        db_path.unlink()
+        conn = sqlite3.connect(db_path)
         conn.executescript(
             """
             CREATE TABLE nodes (taxid INTEGER PRIMARY KEY, parent INTEGER NOT NULL,
@@ -92,6 +100,9 @@ class TestFailedBuildDoesNotPoison:
         conn.commit()
         conn.close()
 
+        with pytest.raises(Exception, match="required tables|stale"):
+            TaxSQLite(taxdump_copy)
+        assert main(["cache", "-d", str(taxdump_copy)]) == 0
         with TaxSQLite(taxdump_copy) as db:
             assert len(db) > 1  # rebuilt, not the single stub row
             assert len(db.delnodes) > 0

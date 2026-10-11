@@ -45,7 +45,7 @@ class TaxonomyDatabase(ABC):
         Initialize the taxonomy database.
 
         Args:
-            taxdump_dir: Path to directory containing NCBI taxdump files
+            taxdump_dir: Path to directory containing caches built from NCBI taxdump files
             **kwargs: Backend-specific parameters
         """
         if taxdump_dir is None or (isinstance(taxdump_dir, str) and not taxdump_dir.strip()):
@@ -203,10 +203,14 @@ class TaxonomyDatabase(ABC):
 
 def create_database(taxdump_dir: Path | str, backend: str = "sqlite", **kwargs) -> TaxonomyDatabase:
     """
-    Factory function to create appropriate database backend.
+    Open an existing cache with the requested database backend.
+
+    Build caches first with ``taxdumpy cache -d PATH``. This factory is for
+    opening a backend in a Python program, especially for batch operations; it
+    never parses source taxdump files or creates cache files.
 
     Args:
-        taxdump_dir: Path to directory containing NCBI taxdump files
+        taxdump_dir: Path to directory containing caches built from NCBI taxdump files
         backend: Database backend to use ("sqlite", "dict", or "memory")
         **kwargs: Backend-specific parameters
 

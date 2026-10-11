@@ -42,12 +42,19 @@ pip install -e '.[dev]'
 
 ## Quick Start
 
+Build the taxonomy caches from the NCBI taxdump files with the CLI before
+opening a database from Python or running query commands:
+
+```bash
+taxdumpy cache -d /path/to/taxdump
+```
+
 ### Basic Usage
 
 ```python
 from taxdumpy import TaxDb, Taxon
 
-# Initialize database (uses pickle cache if available)
+# Open the cache built by `taxdumpy cache`; API constructors never build caches.
 taxdb = TaxDb("/path/to/taxdump")
 
 # Create taxon objects
@@ -67,14 +74,14 @@ print(f"Division: {human.division}")   # PRI (division code, not full name)
 print(f"Is legacy: {human.is_legacy}") # False
 ```
 
-### Using the Factory Function
+### Choosing a Backend for Batch Queries
 
 ```python
 from taxdumpy import create_database, Taxon
 
-# taxdump_dir is the first positional argument
+# Build the cache first with: taxdumpy cache -d /path/to/taxdump
 db = create_database("/path/to/taxdump", backend="sqlite")
-# Or: backend="dict" for in-memory
+# Use backend="dict" for in-memory batch processing.
 
 taxon = Taxon(9606, db)
 print(taxon.name)  # Homo sapiens
@@ -168,12 +175,13 @@ taxdumpy --version
 taxdumpy cache -d /path/to/taxdump
 
 # Build taxdump_fast.pickle from selected taxids (one per line), their
-# ancestors, and their descendants; blank lines and # comments are allowed
+# ancestors, and their descendants; blank lines and # comments are allowed.
+# This command is also the only supported cache-building path.
 taxdumpy cache -d /path/to/taxdump -f important_taxids.txt
 ```
 
-The filtered command loads the full `TaxDb` to build the subset. It does not
-rebuild SQLite. Queries outside the subset require the full database.
+The filtered command rebuilds the filtered pickle cache and does not rebuild
+SQLite. Queries outside the subset require the full database.
 
 ### Search Operations
 
@@ -215,13 +223,13 @@ wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz -P ~/.taxonkit
 tar -xzf ~/.taxonkit/taxdump.tar.gz -C ~/.taxonkit
 ```
 
-### 2. Initialize Database
+### 2. Build the Caches
 
 ```bash
-# Create full cache (recommended for regular use)
+# Create the SQLite and full pickle caches (required before API use)
 taxdumpy cache -d ~/.taxonkit
 
-# Or create fast cache with specific organisms
+# Or create a filtered pickle cache with specific organisms
 echo -e "9606\n511145\n7227" > important_species.txt
 taxdumpy cache -d ~/.taxonkit -f important_species.txt
 ```
@@ -239,8 +247,9 @@ export TAXDB_PATH=~/.taxonkit
 ```python
 from taxdumpy import TaxSQLite, Taxon
 
-# Use SQLite for memory-efficient storage
-db = TaxSQLite("/path/to/taxdump")  # Creates taxdump.sqlite in that directory
+# Use the SQLite cache for memory-efficient batch processing.
+# The cache must already exist from `taxdumpy cache`.
+db = TaxSQLite("/path/to/taxdump")
 
 # Same API as TaxDb
 taxon = Taxon(9606, db)
@@ -269,13 +278,15 @@ for taxid in taxids:
     print(f"{taxon.name}: {' > '.join(taxon.name_lineage[:3])}")
 ```
 
-For a known subset, build a filtered cache using the full database, then load
-that smaller cache in subsequent processes:
+For a known subset, build a filtered cache with the CLI, then load that smaller
+cache in subsequent processes:
+
+```bash
+printf '9606\n511145\n7227\n4932\n' > important_taxids.txt
+taxdumpy cache -d /path/to/taxdump -f important_taxids.txt
+```
 
 ```python
-count = taxdb.build_fast_cache([9606, 511145, 7227, 4932])
-print(f"Cached {count} nodes, including ancestors and descendants")
-
 subset = TaxDb("/path/to/taxdump", fast=True)
 human = Taxon(9606, subset)
 ```
@@ -283,28 +294,24 @@ human = Taxon(9606, subset)
 ### Cache Freshness and Rebuilding
 
 New caches record source file sizes and modification times. Opening a stale
-full pickle or SQLite cache rebuilds it from the taxdump files. Missing, stale,
-or unreadable filtered caches raise an error; recreate them with `cache -f FILE`
-or `build_fast_cache(taxids)` so the selection is explicit.
+full pickle or SQLite cache reports an error instead of rebuilding it. Missing, stale,
+or unreadable filtered caches raise an error; recreate them with
+`taxdumpy cache -f FILE` so the selection is explicit.
 
 Original three-part pickles remain readable, and legacy caches use source
 modification times to detect changes. Valid caches remain usable after the
 source `.dmp` files are removed. Rebuilding requires the source files again.
 
-To force a rebuild from Python:
+To rebuild caches, run the CLI again:
 
-```python
-from taxdumpy import TaxDb, TaxSQLite
-
-taxdb = TaxDb("/path/to/taxdump", rebuild=True)
-with TaxSQLite("/path/to/taxdump", rebuild=True) as db:
-    print(len(db))
+```bash
+taxdumpy cache -d /path/to/taxdump
 ```
 
 Each cache is replaced atomically only after its new contents are written
-successfully. A failed rebuild preserves the previous file. `rebuild=True`
-cannot be combined with `fast=True`; rebuild filtered caches through the full
-database's `build_fast_cache` method instead.
+successfully. A failed rebuild preserves the previous file. Database API
+constructors only read existing caches and report the CLI command when a cache
+is missing, stale, or unreadable.
 
 ### Handling Merged/Legacy TaxIDs
 
@@ -345,16 +352,16 @@ except TaxRankError as e:
 
 ### Core Classes
 
-**TaxDb**: In-memory dictionary-based database with pickle caching
+**TaxDb**: In-memory dictionary-based database loaded from a pickle cache
 
 ```python
-TaxDb(taxdump_dir: Path | str, fast: bool = False, verbose: bool = False, *, rebuild: bool = False)
+TaxDb(taxdump_dir: Path | str, fast: bool = False, verbose: bool = False)
 ```
 
-**TaxSQLite**: SQLite-based persistent database
+**TaxSQLite**: SQLite-backed database loaded from an existing cache
 
 ```python
-TaxSQLite(taxdump_dir: Path | str, verbose: bool = False, *, rebuild: bool = False)
+TaxSQLite(taxdump_dir: Path | str, verbose: bool = False)
 ```
 
 **Taxon**: Taxonomic unit with lineage resolution
@@ -381,11 +388,12 @@ Taxon(taxid: int | str, taxdb: TaxDb | TaxSQLite)
 .species_taxid: int | None # Taxid at species level, or None if absent (previously 0)
 ```
 
-**Factory Function**
+**Factory Function for Batch Programs**
 
 ```python
 from taxdumpy import create_database
 
+# Run `taxdumpy cache -d PATH` before this call.
 # backend: "sqlite", "sql", "dict", "memory", or "pickle"
 db = create_database("/path/to/taxdump", backend="sqlite")
 ```
@@ -512,18 +520,16 @@ ruff check src/ tests/ --fix
 
 ### Release Process
 
-A pushed `v*` tag creates a GitHub Release. It does not build or publish a
-package to PyPI. Build and upload separately when publishing a release:
+A pushed `v*` tag creates a GitHub Release and publishes the package to PyPI
+through the protected `pypi` GitHub Actions environment using OIDC. The tag
+must match `__version__` in `src/taxdumpy/__init__.py`, and PyPI versions cannot
+be overwritten.
 
-```bash
-python -m build
-python -m twine upload dist/*
-```
-
-The release helper requires a clean worktree, runs tests and Ruff, updates and
-commits the version, pushes `origin main` and a version tag, removes `dist/`,
-and builds the package. `--upload` also publishes to PyPI. Run it only when
-those repository and remote changes are intended:
+The release helper remains available for maintainers who explicitly want its
+local version bump and remote side effects. It requires a clean worktree, runs
+tests and Ruff, updates and commits the version, pushes `origin main` and a
+version tag, removes `dist/`, and builds the package. `--upload` publishes
+through Twine. Run it only when those repository and remote changes are intended:
 
 ```bash
 python scripts/release.py --version 1.2.3 --upload

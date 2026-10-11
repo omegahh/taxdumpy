@@ -193,7 +193,9 @@ class TestTaxSQLite:
         (temp_dir / "delnodes.dmp").write_text(delnodes_content)
         (temp_dir / "division.dmp").write_text(division_content)
 
-        # Create TaxSQLite instance - should build database
+        from taxdumpy.cli import main
+
+        assert main(["cache", "-d", str(temp_dir)]) == 0
         with TaxSQLite(temp_dir) as taxsqlite:
             node = taxsqlite.get_node(9606)
             assert node.name == "Homo sapiens"

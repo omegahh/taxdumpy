@@ -12,6 +12,7 @@ from taxdumpy.basic import (
     TaxRankError,
     ValidationError,
 )
+from taxdumpy.cli import main
 from taxdumpy.functions import upper_rank_id
 
 
@@ -137,8 +138,8 @@ class TestTaxDbFileHandling:
 
         with pytest.raises(TaxdumpFileError) as exc_info:
             TaxDb(empty_dir)
-        assert "Files not found" in str(exc_info.value)
-        assert "taxdump" in str(exc_info.value).lower()
+        assert "cache not found" in str(exc_info.value).lower()
+        assert main(["cache", "-d", str(empty_dir)]) == 1
 
     def test_corrupted_taxdump_files(self, temp_dir):
         """Test behavior with corrupted taxdump files."""
@@ -146,9 +147,10 @@ class TestTaxDbFileHandling:
         for filename in TaxDb.REQUIRED_FILES:
             (temp_dir / filename).write_text("invalid content without tabs")
 
+        assert main(["cache", "-d", str(temp_dir)]) == 1
         with pytest.raises(TaxdumpFileError) as exc_info:
             TaxDb(temp_dir)
-        assert "corrupted" in str(exc_info.value).lower() or "invalid format" in str(exc_info.value).lower()
+        assert "cache not found" in str(exc_info.value).lower()
 
     def test_empty_taxdump_files(self, temp_dir):
         """Test behavior with empty taxdump files."""
@@ -156,9 +158,10 @@ class TestTaxDbFileHandling:
         for filename in TaxDb.REQUIRED_FILES:
             (temp_dir / filename).touch()
 
+        assert main(["cache", "-d", str(temp_dir)]) == 1
         with pytest.raises(TaxdumpFileError) as exc_info:
             TaxDb(temp_dir)
-        assert "corrupted" in str(exc_info.value).lower()
+        assert "cache not found" in str(exc_info.value).lower()
 
     def test_permission_error_reading_files(self, sample_taxdump_dir):
         """Test permission error when reading files."""
@@ -177,7 +180,8 @@ class TestTaxDbFileHandling:
             dst = temp_dir / filename
             dst.write_text(src.read_text())
 
-        # Should rebuild from source files, not fail
+        # Rebuild through the CLI, then open the resulting cache.
+        assert main(["cache", "-d", str(temp_dir)]) == 0
         taxdb = TaxDb(temp_dir)
         assert len(taxdb) > 0
 

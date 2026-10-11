@@ -14,7 +14,7 @@ from pathlib import Path
 from rapidfuzz import fuzz, process
 
 from taxdumpy.ansi import u_str
-from taxdumpy.basic import Node, TaxidError, ValidationError
+from taxdumpy.basic import Node, TaxdumpFileError, TaxidError, ValidationError
 from taxdumpy.cache import cache_is_stale, source_signature
 from taxdumpy.database import SearchResult, TaxonomyDatabase
 
@@ -27,35 +27,59 @@ class TaxSQLite(TaxonomyDatabase):
     Create an object of the TaxSQLite class for NCBI taxonomy database operations.
 
     Args:
-        taxdump_dir: Path to directory containing NCBI taxdump files
+        taxdump_dir: Path to directory containing caches built from NCBI taxdump files
         verbose: If True, print status messages during initialization (default: False)
     """
 
     # Every table the query methods rely on. Checking all of them (rather than
-    # just `nodes`) means a cache built by an older version with a narrower
-    # schema is detected and rebuilt instead of failing later on first use.
+    # just `nodes`) means an incomplete cache is rejected before queries run.
     REQUIRED_TABLES = ("nodes", "names", "merged", "delnodes")
 
-    def __init__(self, taxdump_dir: Path | str, verbose: bool = False, *, rebuild: bool = False):
-        # Call parent constructor
-        super().__init__(taxdump_dir)
+    def __init__(self, taxdump_dir: Path | str, verbose: bool = False):
+        self._configure(taxdump_dir, verbose)
+        self._open_cached_database()
 
+    def _configure(self, taxdump_dir: Path | str, verbose: bool) -> None:
+        """Set up a database reader without creating cache files."""
+        super().__init__(taxdump_dir)
         self._verbose = verbose
         self._db_path = self._taxdump_dir / "taxdump.sqlite"
 
-        if rebuild or not self._db_path.exists():
-            self._create_database()
+    @classmethod
+    def _build_cache(cls, taxdump_dir: Path | str, verbose: bool = False) -> None:
+        """Build the SQLite cache for the CLI cache command."""
+        database = cls.__new__(cls)
+        database._configure(taxdump_dir, verbose)
+        database._create_database()
 
-        # open a sqlite connection, and use row_factory for element access, r['name'] for example
-        self._conn = sqlite3.connect(self._db_path)
-        self._conn.row_factory = sqlite3.Row
+    def _open_cached_database(self) -> None:
+        """Open an existing cache and reject missing, stale, or invalid files."""
+        if not self._db_path.exists():
+            raise TaxdumpFileError(
+                self._db_path.name,
+                "Cache not found",
+                f"Run 'taxdumpy cache -d {self._taxdump_dir}' before using the Python API",
+            )
         try:
+            # Open the cache with row access for query methods.
+            self._conn = sqlite3.connect(self._db_path)
+            self._conn.row_factory = sqlite3.Row
             if not self._check_tables() or self._cache_is_stale():
-                # An existing file without the expected schema is unusable.
-                self._conn.close()
-                self._create_database()
-                self._conn = sqlite3.connect(self._db_path)
-                self._conn.row_factory = sqlite3.Row
+                raise TaxdumpFileError(
+                    self._db_path.name,
+                    "Cache is missing required tables or is stale",
+                    f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
+                )
+        except TaxdumpFileError:
+            self.close()
+            raise
+        except sqlite3.DatabaseError as e:
+            self.close()
+            raise TaxdumpFileError(
+                self._db_path.name,
+                f"Cache is unreadable: {e}",
+                f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
+            ) from e
         except Exception:
             self.close()
             raise

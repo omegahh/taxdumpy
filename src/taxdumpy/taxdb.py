@@ -32,14 +32,13 @@ class TaxDb(TaxonomyDatabase):
     Create an object of the TaxDb class for NCBI taxonomy database operations.
 
     Args:
-        taxdump_dir: Path to directory containing NCBI taxdump files
+        taxdump_dir: Path to directory containing caches built from NCBI taxdump files
         fast: Use fast mode with pre-cached subset of data
         verbose: If True, log INFO messages during initialization (default: False)
 
     Raises:
         ValidationError: If taxdump_dir is invalid
-        TaxdumpFileError: If required taxdump files are missing
-        DatabaseCorruptionError: If database files are corrupted
+        TaxdumpFileError: If the cache is missing, stale, or unreadable
     """
 
     # Required taxdump files
@@ -51,35 +50,37 @@ class TaxDb(TaxonomyDatabase):
         "names.dmp",
     ]
 
-    def __init__(
-        self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False, *, rebuild: bool = False
-    ) -> None:
-        # Call parent constructor
+    def __init__(self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False) -> None:
+        self._configure(taxdump_dir, fast, verbose)
+        self._taxid2nodes, self._old2news, self._delnodes = self._load_cached_taxdump()
+
+    def _configure(self, taxdump_dir: Path | str, fast: bool, verbose: bool) -> None:
+        """Set up a database reader without creating any cache files."""
         super().__init__(taxdump_dir)
-
-        # Validate inputs
         self._validate_init_params(taxdump_dir, fast)
-        if fast and rebuild:
-            raise ValidationError("rebuild", rebuild, "build_fast_cache(taxids) to rebuild a filtered cache")
-
         self._fast = fast
         self._verbose = verbose
-        self._rebuild = rebuild
 
-        # Set up file paths
         self._taxdbf = [self._taxdump_dir / filename for filename in self.REQUIRED_FILES]
         self._mrgef, self._delnf, self._divsf, self._nodef, self._namef = self._taxdbf
         self._pickle = self._taxdump_dir / ("taxdump_fast.pickle" if fast else "taxdump.pickle")
 
-        try:
-            if self._verbose:
-                logger.info(f"Loading taxonomy database from {self._taxdump_dir}")
-            self._taxid2nodes, self._old2news, self._delnodes = self._load_taxdump()
-            if self._verbose:
-                logger.info(f"Successfully loaded {len(self._taxid2nodes):,} taxonomy nodes")
-        except Exception as e:
-            logger.error(f"Failed to load taxonomy database: {e}")
-            raise
+    @classmethod
+    def _build_cache(cls, taxdump_dir: Path | str, verbose: bool = False) -> "TaxDb":
+        """Build the full pickle cache for the CLI cache command."""
+        database = cls.__new__(cls)
+        database._configure(taxdump_dir, False, verbose)
+        database._check_taxdump()
+        database._source_signature = source_signature(database._taxdump_dir)
+        database._taxid2nodes, database._old2news, database._delnodes = database._import_nodes()
+        database._save_pickle(database._taxid2nodes, database._old2news, database._delnodes)
+        return database
+
+    @classmethod
+    def _build_fast_cache(cls, taxdump_dir: Path | str, taxids, verbose: bool = False) -> int:
+        """Build a filtered pickle cache for the CLI cache command."""
+        database = cls._build_cache(taxdump_dir, verbose=verbose)
+        return database._write_fast_cache(taxids)
 
     @staticmethod
     def _validate_init_params(taxdump_dir: Path | str, fast: bool) -> None:
@@ -106,7 +107,7 @@ class TaxDb(TaxonomyDatabase):
         for filepath in self._taxdbf:
             if not filepath.exists():
                 missing_files.append(filepath.name)
-            elif filepath.stat().st_size == 0:
+            elif filepath.stat().st_size == 0 and filepath.name not in {"merged.dmp", "delnodes.dmp"}:
                 corrupted_files.append(filepath.name)
             else:
                 # Basic validation - check file starts with expected format
@@ -114,6 +115,8 @@ class TaxDb(TaxonomyDatabase):
                     with open(filepath, "r") as f:
                         first_line = f.readline().strip()
                         # Different files have different formats, but all should have some tabs
+                        if not first_line and filepath.name in {"merged.dmp", "delnodes.dmp"}:
+                            continue
                         if not first_line or "\t" not in first_line:
                             corrupted_files.append(filepath.name)
                 except (OSError, UnicodeDecodeError):
@@ -144,63 +147,54 @@ class TaxDb(TaxonomyDatabase):
     def __len__(self) -> int:
         return len(self._taxid2nodes)
 
-    def _load_taxdump(self):
-        if self._pickle.is_file() and not self._rebuild:
-            try:
-                with open(self._pickle, "rb") as fin:
-                    data = pickle.load(fin)
-                if isinstance(data, dict):
-                    if data.get("format_version") != 1:
-                        raise ValueError("Unsupported pickle cache version")
-                    taxid2nodes, old2news, del_taxids = data["nodes"], data["merged"], data["deleted"]
-                    signature = data["sources"]
-                else:
-                    # Accept the original three-part pickle format.
-                    taxid2nodes, old2news, del_taxids = data
-                    signature = None
-                if (
-                    not isinstance(taxid2nodes, dict)
-                    or not isinstance(old2news, dict)
-                    or not isinstance(del_taxids, set)
-                ):
-                    raise ValueError("Invalid pickle cache structure")
-                if not cache_is_stale(self._pickle, signature):
-                    self._source_signature = signature if signature is not None else source_signature(self._taxdump_dir)
-                    logger.debug(f"Loaded valid pickle file: {self._pickle}")
-                    return taxid2nodes, old2news, del_taxids
-                logger.info("Taxdump sources changed; rebuilding cache")
-            except (
-                pickle.PickleError,
-                EOFError,
-                OSError,
-                ValueError,
-                TypeError,
-                KeyError,
-                AttributeError,
-                ImportError,
-            ) as e:
-                logger.warning(f"Pickle file corrupted, will rebuild from source: {e}")
-
-        if self._fast:
+    def _load_cached_taxdump(self):
+        """Load an existing pickle cache; cache creation belongs to the CLI."""
+        if not self._pickle.is_file():
             raise TaxdumpFileError(
                 self._pickle.name,
-                "Fast cache is missing, stale or unreadable",
-                "Create it with taxdumpy cache -d PATH -f FILE before using fast=True",
+                "Fast cache not found" if self._fast else "Cache not found",
+                f"Run 'taxdumpy cache -d {self._taxdump_dir} -f FILE' before using fast mode"
+                if self._fast
+                else f"Run 'taxdumpy cache -d {self._taxdump_dir}' before using the Python API",
             )
-
-        # Validate source files only when a cache is absent or unusable.
-        self._check_taxdump()
-        self._source_signature = source_signature(self._taxdump_dir)
-        taxid2nodes, old2news, del_taxids = self._import_nodes()
-        # Save the imported data to pickle for future use
         try:
-            self._save_pickle(taxid2nodes, old2news, del_taxids)
-        except Exception as e:
-            if self._rebuild:
-                raise
-            logger.warning(f"Failed to save pickle file: {e}")
-
-        return taxid2nodes, old2news, del_taxids
+            with open(self._pickle, "rb") as fin:
+                data = pickle.load(fin)
+            if isinstance(data, dict):
+                if data.get("format_version") != 1:
+                    raise ValueError("Unsupported pickle cache version")
+                taxid2nodes, old2news, del_taxids = data["nodes"], data["merged"], data["deleted"]
+                signature = data["sources"]
+            else:
+                taxid2nodes, old2news, del_taxids = data
+                signature = None
+            if not isinstance(taxid2nodes, dict) or not isinstance(old2news, dict) or not isinstance(del_taxids, set):
+                raise ValueError("Invalid pickle cache structure")
+            if cache_is_stale(self._pickle, signature):
+                raise TaxdumpFileError(
+                    self._pickle.name,
+                    "Cache is stale",
+                    f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
+                )
+            self._source_signature = signature if signature is not None else source_signature(self._taxdump_dir)
+            return taxid2nodes, old2news, del_taxids
+        except TaxdumpFileError:
+            raise
+        except (
+            pickle.PickleError,
+            EOFError,
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            ImportError,
+        ) as e:
+            raise TaxdumpFileError(
+                self._pickle.name,
+                ("Fast cache is unreadable" if self._fast else f"Cache is unreadable: {e}"),
+                f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
+            ) from e
 
     @cached_property
     def all_names(self) -> List[str]:
@@ -426,18 +420,13 @@ class TaxDb(TaxonomyDatabase):
         )
         logger.debug(f"Saved pickle file: {self._pickle}")
 
-    def dump_taxdump(self):
-        """Manually save the current database to pickle file."""
-        print(f"Writing to {self._pickle}")
-        self._save_pickle(self._taxid2nodes, self._old2news, self.delnodes)
-        print("Taxdump dumped!")
-
-    def build_fast_cache(self, taxids) -> int:
+    def _write_fast_cache(self, taxids) -> int:
         """Cache selected taxids, their ancestors and descendants; return the node count.
 
         Resolve and validate every selection before writing. Descending multiple
         overlapping subtrees visits each node once, after one database-wide scan.
-        Call this on a full database, then open TaxDb(path, fast=True) to reuse it.
+        This is used by the CLI cache command; API callers should only read the
+        resulting cache with ``TaxDb(path, fast=True)``.
         """
         from taxdumpy.functions import build_children_index
         from taxdumpy.taxon import Taxon

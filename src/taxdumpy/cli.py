@@ -273,12 +273,11 @@ def _handle_cache_command(args, taxdb_path: Path) -> int:
             # Build SQLite database
             print("📦 Building SQLite database...")
             sqlite_file = taxdb_path / "taxdump.sqlite"
-            taxsqlite = TaxSQLite(taxdb_path, rebuild=True)
+            TaxSQLite._build_cache(taxdb_path, verbose=args.verbose)
             print(f"✅ SQLite database created: {sqlite_file}")
-            taxsqlite.close()
             # Build full pickle cache
             print("📦 Building full pickle cache...")
-            taxdb = TaxDb(taxdb_path, rebuild=True)
+            taxdb = TaxDb._build_cache(taxdb_path, verbose=args.verbose)
             print(f"✅ Full pickle cache created with {len(taxdb):,} taxonomy nodes")
         else:
             # Build fast pickle cache with filtered taxids
@@ -325,12 +324,8 @@ def _build_fast_cache(args, taxdb_path: Path) -> int:
         # Build fast cache
         pickle_file = taxdb_path / "taxdump_fast.pickle"
 
-        print("🔄 Loading full taxonomy database...")
-        taxdb = TaxDb(taxdb_path)
-        print(f"📊 Full database contains {len(taxdb):,} taxids")
-
         print("🔍 Finding selected subtrees and ancestors...")
-        count = taxdb.build_fast_cache(all_taxids)
+        count = TaxDb._build_fast_cache(taxdb_path, all_taxids, verbose=args.verbose)
         print(f"🎉 Fast cache created at {pickle_file} with {count:,} taxonomy nodes!")
         return 0
 

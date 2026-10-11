@@ -126,23 +126,6 @@ class TestTaxDb:
         # Should return empty list for empty query
         assert len(results) == 0
 
-    def test_dump_taxdump(self, sample_taxdb, temp_dir):
-        """Test dumping taxdump to pickle file."""
-        # Change the pickle path to temp directory
-        pickle_file = temp_dir / "test_taxdump.pickle"
-        sample_taxdb._pickle = pickle_file
-
-        sample_taxdb.dump_taxdump()
-
-        assert pickle_file.exists()
-
-        # Verify the pickle file contains the expected data
-        with open(pickle_file, "rb") as f:
-            data = pickle.load(f)
-
-        assert data["format_version"] == 1
-        assert data["nodes"][9606].name == "Homo sapiens"
-
     def test_missing_taxdump_files(self, temp_dir):
         """Test behavior with missing taxdump files."""
         # Create empty directory
@@ -158,14 +141,25 @@ class TestTaxDb:
         taxdb1 = TaxDb(sample_taxdump_dir)
         pickle_file = temp_dir / "test.pickle"
         taxdb1._pickle = pickle_file
-        taxdb1.dump_taxdump()
+        from taxdumpy.cache import atomic_pickle_dump
+
+        atomic_pickle_dump(
+            pickle_file,
+            {
+                "format_version": 1,
+                "sources": taxdb1._source_signature,
+                "nodes": taxdb1._taxid2nodes,
+                "merged": taxdb1._old2news,
+                "deleted": taxdb1.delnodes,
+            },
+        )
 
         # Create new instance that should load from pickle
         taxdb2 = TaxDb(sample_taxdump_dir)
         taxdb2._pickle = pickle_file
 
         # Force reload
-        taxdb2._taxid2nodes, taxdb2._old2news, taxdb2._delnodes = taxdb2._load_taxdump()
+        taxdb2._taxid2nodes, taxdb2._old2news, taxdb2._delnodes = taxdb2._load_cached_taxdump()
 
         # Should have same data
         assert len(taxdb1) == len(taxdb2)
@@ -176,7 +170,18 @@ class TestTaxDb:
         pickle_file = temp_dir / "taxdump.pickle"
         source_db = TaxDb(sample_taxdump_dir)
         source_db._pickle = pickle_file
-        source_db.dump_taxdump()
+        from taxdumpy.cache import atomic_pickle_dump
+
+        atomic_pickle_dump(
+            pickle_file,
+            {
+                "format_version": 1,
+                "sources": source_db._source_signature,
+                "nodes": source_db._taxid2nodes,
+                "merged": source_db._old2news,
+                "deleted": source_db.delnodes,
+            },
+        )
 
         with patch("taxdumpy.taxdb.pickle.load", wraps=pickle.load) as load:
             loaded_db = TaxDb(temp_dir)

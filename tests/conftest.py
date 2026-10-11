@@ -8,18 +8,22 @@ from typing import Generator
 import pytest
 
 from taxdumpy import TaxDb, TaxSQLite
+from taxdumpy.cli import main
 
 
 @pytest.fixture
 def source_dir(tmp_path):
     for path in (Path(__file__).parent / "data").glob("*.dmp"):
         shutil.copy2(path, tmp_path / path.name)
+    assert main(["cache", "-d", str(tmp_path)]) == 0
     return tmp_path
 
 
 @pytest.fixture
 def fast_cache_dir(source_dir):
-    TaxDb(source_dir).build_fast_cache([9606, 561])
+    selection = source_dir / "selected.txt"
+    selection.write_text("9606\n561\n")
+    assert main(["cache", "-d", str(source_dir), "-f", str(selection)]) == 0
     return source_dir
 
 
@@ -34,6 +38,8 @@ def sample_taxdump_dir() -> Generator[Path, None, None]:
         # Copy all files from test data directory
         for file_path in test_data_path.glob("*.dmp"):
             shutil.copy2(file_path, taxdump_path)
+
+        assert main(["cache", "-d", str(taxdump_path)]) == 0
 
         yield taxdump_path
 

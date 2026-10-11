@@ -227,12 +227,8 @@ class TestCLI:
 
         result = main(args)
 
-        # Should have called both database constructors
-        mock_taxdb.assert_called_once()
-        mock_taxsqlite.assert_called_once()
-        assert mock_taxdb.call_args.kwargs["rebuild"] is True
-        assert mock_taxsqlite.call_args.kwargs["rebuild"] is True
-        mock_taxdb_instance.dump_taxdump.assert_not_called()
+        mock_taxdb._build_cache.assert_called_once()
+        mock_taxsqlite._build_cache.assert_called_once()
 
     def test_main_lineage_invalid_taxid(self, sample_taxdump_dir):
         """Test lineage command with invalid taxid."""
