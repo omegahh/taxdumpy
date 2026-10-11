@@ -139,11 +139,11 @@ class TestCLI:
 
         assert result == 0
 
-    def test_search_failure_returns_error_and_closes_database(self, source_dir, capsys):
-        db = TaxSQLite(source_dir)
+    def test_search_failure_returns_error_and_closes_database(self, cached_dir, capsys):
+        db = TaxSQLite(cached_dir)
         with patch("taxdumpy.cli.TaxSQLite", return_value=db):
             with patch.object(db, "search", side_effect=TaxDbError("Search failed")):
-                assert main(["search", "-d", str(source_dir), "human"]) == 1
+                assert main(["search", "-d", str(cached_dir), "human"]) == 1
         with pytest.raises(sqlite3.ProgrammingError):
             db.get_node(9606)
         assert "Search failed" in capsys.readouterr().err

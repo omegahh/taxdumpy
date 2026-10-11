@@ -42,7 +42,7 @@ class RC(int):
             value = (base_level << 8) | depth
         else:
             raise ValueError(f"Invalid rank code: {code!r}")
-        if value < 0 or value >> 8 >= len(_RANKCODE_ORDER) or value & 0xFF > 255:
+        if value < 0 or value >> 8 >= len(_RANKCODE_ORDER):
             raise ValueError(f"Invalid rank code value: {code!r}")
         return super().__new__(cls, value)
 
@@ -55,17 +55,10 @@ class RC(int):
         return f"RC({str(self)!r})"
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Node:
-    __slots__ = (
-        "taxid",
-        "parent",
-        "rank",
-        "name",
-        "equal",
-        "acronym",
-        "division",
-    )
+    """Immutable taxonomy record shared safely by readers and derived caches."""
+
     taxid: int
     parent: int
     rank: str
@@ -166,18 +159,6 @@ class DatabaseCorruptionError(TaxDbError):
         message = f"{database_type} database appears to be corrupted"
         solution = "Try rebuilding the database from original taxdump files"
         super().__init__(message, f"{corruption_details}\nSolution: {solution}")
-
-
-class TaxdumpyMemoryError(TaxdumpyError):
-    """Raised when memory-related issues occur."""
-
-    def __init__(self, operation: str, suggestion: str | None = None):
-        self.operation = operation
-        default_suggestion = "Try using TaxSQLite instead of TaxDb for memory efficiency"
-        self.suggestion = suggestion or default_suggestion
-
-        message = f"Memory error during {operation}"
-        super().__init__(f"{message}\nSuggestion: {self.suggestion}")
 
 
 class ValidationError(TaxdumpyError):

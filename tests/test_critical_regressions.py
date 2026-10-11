@@ -1,50 +1,36 @@
 """Regression tests for previously-fixed critical defects.
 
-Each test here pins a specific bug that shipped once and was silent in normal
-use. They are deliberately behavioural: none of them inspect private state.
+Each test here pins a specific bug that shipped once and was silent in normal use.
 """
 
-import shutil
 import sqlite3
 from pathlib import Path
 
 import pytest
 
-from taxdumpy import TaxDb, TaxSQLite
+from taxdumpy import TaxDb, TaxdumpFileError, TaxSQLite
 from taxdumpy.cli import main
 from taxdumpy.database import TaxonomyDatabase
-
-
-@pytest.fixture
-def taxdump_copy(tmp_path: Path) -> Path:
-    """A private, writable copy of the sample taxdump files."""
-    src = Path(__file__).parent / "data"
-    dst = tmp_path / "taxdump"
-    dst.mkdir()
-    for f in src.glob("*.dmp"):
-        shutil.copy2(f, dst)
-    assert main(["cache", "-d", str(dst)]) == 0
-    return dst
 
 
 class TestSQLiteSelfContained:
     """The SQLite database must not read .dmp files at query time."""
 
-    def test_queries_work_after_dmp_files_removed(self, taxdump_copy: Path):
-        with TaxSQLite(taxdump_copy) as db:
+    def test_queries_work_after_dmp_files_removed(self, cached_dir: Path):
+        with TaxSQLite(cached_dir) as db:
             expected_len = len(db)
             expected_delnodes = db.delnodes
 
-        for f in taxdump_copy.glob("*.dmp"):
+        for f in cached_dir.glob("*.dmp"):
             f.unlink()
 
-        with TaxSQLite(taxdump_copy) as db:
+        with TaxSQLite(cached_dir) as db:
             assert len(db) == expected_len
             assert db.delnodes == expected_delnodes
             assert db.get_node(9606).name == "Homo sapiens"
 
-    def test_delnodes_stored_in_database(self, taxdump_copy: Path):
-        with TaxSQLite(taxdump_copy) as db:
+    def test_delnodes_stored_in_database(self, cached_dir: Path):
+        with TaxSQLite(cached_dir) as db:
             assert len(db.delnodes) > 0
             row = db._conn.execute("SELECT COUNT(*) FROM delnodes").fetchone()
             assert row[0] == len(db.delnodes)
@@ -53,38 +39,34 @@ class TestSQLiteSelfContained:
 class TestFailedBuildDoesNotPoison:
     """A failed build must not leave a valid-looking empty database behind."""
 
-    def test_build_failure_is_repeatable(self, tmp_path: Path):
-        # No .dmp files present, so the build must fail every time rather than
-        # succeeding on the second attempt against a half-built database.
+    def test_build_failure_is_repeatable(self, tmp_path: Path, capsys):
         for _ in range(2):
-            with pytest.raises((FileNotFoundError, Exception)):
-                TaxSQLite(tmp_path)
+            assert main(["cache", "-d", str(tmp_path)]) == 1
+            assert "Files not found" in capsys.readouterr().err
 
     def test_build_failure_leaves_no_database_file(self, tmp_path: Path):
-        with pytest.raises(Exception):
-            TaxSQLite(tmp_path)
-        assert not (tmp_path / "taxdump.sqlite").exists()
+        assert main(["cache", "-d", str(tmp_path)]) == 1
         assert list(tmp_path.iterdir()) == []
 
-    def test_existing_file_without_schema_is_rebuilt(self, taxdump_copy: Path):
+    def test_existing_file_without_schema_is_rebuilt(self, cached_dir: Path):
         # A truncated/corrupt database should be replaced, not trusted.
-        db_path = taxdump_copy / "taxdump.sqlite"
+        db_path = cached_dir / "taxdump.sqlite"
         db_path.unlink()
         sqlite3.connect(db_path).close()  # valid sqlite file, no tables
-        with pytest.raises(Exception, match="required tables|stale"):
-            TaxSQLite(taxdump_copy)
-        assert main(["cache", "-d", str(taxdump_copy)]) == 0
-        with TaxSQLite(taxdump_copy) as db:
+        with pytest.raises(TaxdumpFileError, match="required tables|stale"):
+            TaxSQLite(cached_dir)
+        assert main(["cache", "-d", str(cached_dir)]) == 0
+        with TaxSQLite(cached_dir) as db:
             assert len(db) > 0
             assert db.get_node(9606).name == "Homo sapiens"
 
-    def test_cache_from_older_version_is_rebuilt(self, taxdump_copy: Path):
+    def test_cache_from_older_version_is_rebuilt(self, cached_dir: Path):
         """A cache predating the delnodes table must be upgraded, not trusted.
 
         Older versions built nodes/names/merged only and read delnodes.dmp at
         query time, so such a file is schema-incomplete for current code.
         """
-        db_path = taxdump_copy / "taxdump.sqlite"
+        db_path = cached_dir / "taxdump.sqlite"
         db_path.unlink()
         conn = sqlite3.connect(db_path)
         conn.executescript(
@@ -100,26 +82,26 @@ class TestFailedBuildDoesNotPoison:
         conn.commit()
         conn.close()
 
-        with pytest.raises(Exception, match="required tables|stale"):
-            TaxSQLite(taxdump_copy)
-        assert main(["cache", "-d", str(taxdump_copy)]) == 0
-        with TaxSQLite(taxdump_copy) as db:
+        with pytest.raises(TaxdumpFileError, match="required tables|stale"):
+            TaxSQLite(cached_dir)
+        assert main(["cache", "-d", str(cached_dir)]) == 0
+        with TaxSQLite(cached_dir) as db:
             assert len(db) > 1  # rebuilt, not the single stub row
             assert len(db.delnodes) > 0
             assert db.get_node(9606).name == "Homo sapiens"
             assert "Deleted nodes" in repr(db)
 
-    def test_no_temp_files_left_after_build(self, taxdump_copy: Path):
-        with TaxSQLite(taxdump_copy) as db:
+    def test_no_temp_files_left_after_build(self, cached_dir: Path):
+        with TaxSQLite(cached_dir) as db:
             assert len(db) > 0
-        assert [p.name for p in taxdump_copy.iterdir() if p.name.endswith(".tmp")] == []
+        assert [p.name for p in cached_dir.iterdir() if p.name.endswith(".tmp")] == []
 
 
 class TestAbstractContractEnforced:
     """The ABC must actually reject incomplete subclasses."""
 
     def test_cached_properties_are_abstract(self):
-        for name in ("all_names", "name2taxid", "delnodes", "max_taxid_strlen", "max_rank_strlen"):
+        for name in ("_search_names", "delnodes", "max_taxid_strlen", "max_rank_strlen"):
             assert name in TaxonomyDatabase.__abstractmethods__
 
     def test_incomplete_subclass_cannot_be_instantiated(self, tmp_path: Path):
@@ -127,11 +109,11 @@ class TestAbstractContractEnforced:
             def get_node(self, taxid):
                 raise NotImplementedError
 
-            def fuzzy_search(self, query, limit=10):
+            def get_names(self, taxid):
                 raise NotImplementedError
 
-            def _rapid_fuzz(self, query, limit=10):
-                raise NotImplementedError
+            def iter_parent_pairs(self):
+                return iter(())
 
             def __len__(self):
                 return 0
@@ -139,6 +121,7 @@ class TestAbstractContractEnforced:
             def __repr__(self):
                 return ""
 
+        assert Incomplete.__abstractmethods__ == {"_search_names", "delnodes", "max_taxid_strlen", "max_rank_strlen"}
         with pytest.raises(TypeError, match="abstract"):
             Incomplete(tmp_path)
 
@@ -151,9 +134,9 @@ class TestSearchQueryIsNotARegex:
     """User queries are escaped before being used as a regex pattern."""
 
     @pytest.mark.parametrize("query", ["Escherichia (coli", "coli)", "Homo [sapiens", "e+coli", "*coli"])
-    def test_metacharacters_do_not_break_display(self, taxdump_copy: Path, capsys, query: str):
+    def test_metacharacters_do_not_break_display(self, cached_dir: Path, capsys, query: str):
         for factory in (TaxDb, TaxSQLite):
-            with factory(taxdump_copy) as db:
+            with factory(cached_dir) as db:
                 db.fuzzy_search(query, limit=3)
             captured = capsys.readouterr().out
             assert "unterminated" not in captured

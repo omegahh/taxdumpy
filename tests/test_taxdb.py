@@ -1,6 +1,7 @@
 """Tests for TaxDb class."""
 
 import pickle
+from collections.abc import Mapping
 from unittest.mock import patch
 
 import pytest
@@ -68,17 +69,17 @@ class TestTaxDb:
         assert "Homo sapiens" in names
         assert "Methanobacterium bryantii" in names
 
-    def test_name2taxid_property(self, sample_taxdb):
-        """Test the name2taxid cached property."""
-        name_map = sample_taxdb.name2taxid
-        assert isinstance(name_map, dict)
-        assert name_map["Homo sapiens"] == 9606
-        assert name_map["Methanobacterium bryantii"] == 2161
+    def test_name2taxids_property(self, sample_taxdb):
+        """Test the name2taxids cached property."""
+        name_map = sample_taxdb.name2taxids
+        assert isinstance(name_map, Mapping)
+        assert name_map["Homo sapiens"] == (9606,)
+        assert name_map["Methanobacterium bryantii"] == (2161,)
 
     def test_delnodes_property(self, sample_taxdb):
         """Test the delnodes property."""
         del_nodes = sample_taxdb.delnodes
-        assert isinstance(del_nodes, set)
+        assert isinstance(del_nodes, frozenset)
         assert 3451490 in del_nodes
         assert 3451488 in del_nodes
 

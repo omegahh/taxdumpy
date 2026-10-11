@@ -4,14 +4,15 @@ Author: Hao Hong (omeganju@gmail.com)
 Created: 2025-06-30 19:51:00
 """
 
+from collections.abc import Mapping
 from functools import cached_property
+from types import MappingProxyType
 
 from taxdumpy.ansi import b_str, r_str
 from taxdumpy.basic import RC, Node, TaxDbError
+from taxdumpy.database import TaxonomyDatabase
 from taxdumpy.ranks import MPA_CODES as _MPA_CODES
 from taxdumpy.ranks import RANK_CODES as _RANK_CODES
-from taxdumpy.taxdb import TaxDb
-from taxdumpy.taxsqlite import TaxSQLite
 
 
 class Taxon:
@@ -20,7 +21,7 @@ class Taxon:
     """
 
     # @line_profiler.profile
-    def __init__(self, taxid: int, taxdb: TaxDb | TaxSQLite):
+    def __init__(self, taxid: int | str, taxdb: TaxonomyDatabase):
         # taxid, taxonomy node, and lineage
         self._taxdb = taxdb
         self._taxid = taxdb._validate_taxid(taxid)
@@ -36,7 +37,7 @@ class Taxon:
         return self._node
 
     @property
-    def lineage(self) -> list[Node]:
+    def lineage(self) -> tuple[Node, ...]:
         return self._lineage
 
     # other infered taxon attributes
@@ -49,9 +50,9 @@ class Taxon:
         return self.node.name
 
     @cached_property
-    def names(self) -> dict[str, tuple[str, ...]]:
+    def names(self) -> Mapping[str, tuple[str, ...]]:
         """All NCBI name classes, loaded on first access while the database is open."""
-        return self._taxdb.get_names(self.update_taxid)
+        return MappingProxyType(self._taxdb.get_names(self.update_taxid))
 
     @property
     def synonyms(self) -> tuple[str, ...]:
@@ -107,20 +108,20 @@ class Taxon:
         """Return the species ancestor, or None when the lineage has none."""
         return self.taxid_lineage[self.rank_lineage.index("species")] if self.has_species_level else None
 
-    @property
-    def taxid_lineage(self) -> list[int]:
-        return [node.taxid for node in self.lineage]
-
-    @property
-    def rank_lineage(self) -> list[str]:
-        return [node.rank for node in self.lineage]
-
-    @property
-    def name_lineage(self) -> list[str]:
-        return [node.name for node in self.lineage]
+    @cached_property
+    def taxid_lineage(self) -> tuple[int, ...]:
+        return tuple(node.taxid for node in self.lineage)
 
     @cached_property
-    def rankcode_lineage(self) -> list[RC]:
+    def rank_lineage(self) -> tuple[str, ...]:
+        return tuple(node.rank for node in self.lineage)
+
+    @cached_property
+    def name_lineage(self) -> tuple[str, ...]:
+        return tuple(node.name for node in self.lineage)
+
+    @cached_property
+    def rankcode_lineage(self) -> tuple[RC, ...]:
         """
         Lineage as comparable RC (rank code) objects.
 
@@ -130,7 +131,7 @@ class Taxon:
         RC objects are comparable: RC("R") < RC("S"), RC("F") < RC("F1")
 
         Returns:
-            List of RC objects from taxon to root (e.g., [RC('S'), RC('G'), RC('F'), ...])
+            Tuple of RC objects from taxon to root
         """
         result: list[RC] = []
         rank_code = "R"
@@ -154,7 +155,7 @@ class Taxon:
 
         # Reverse to match taxon->root order like other lineage properties
         result.reverse()
-        return result
+        return tuple(result)
 
     @cached_property
     def mpa_repr(self) -> str:
@@ -189,13 +190,14 @@ class Taxon:
 
     def __repr__(self):
         lineage_str_list = []
+        rc_width, id_width, rank_width = self._max_rclen, self._max_tlen, self._max_rlen
         for rc, t, r, n in zip(
             self.rankcode_lineage,
             self.taxid_lineage,
             self.rank_lineage,
             self.name_lineage,
         ):
-            current_str = f"{str(rc):<{self._max_rclen}}\t{t:<{self._max_tlen}}\t{r:<{self._max_rlen}}\t{n}"
+            current_str = f"{str(rc):<{rc_width}}\t{t:<{id_width}}\t{r:<{rank_width}}\t{n}"
             if t == self.node.taxid:
                 if self.acronym:
                     current_str += f" ({self.acronym})"
@@ -211,7 +213,7 @@ class Taxon:
             print_str += r_str(f" <- [{self.taxid} has been merged!]")
         return print_str
 
-    def _find_lineage(self, taxdb: TaxDb | TaxSQLite) -> list[Node]:
+    def _find_lineage(self, taxdb: TaxonomyDatabase) -> tuple[Node, ...]:
         lineage = [self.node]
         seen = {self.node.taxid}
         current_taxid = lineage[-1].taxid
@@ -229,4 +231,4 @@ class Taxon:
                 "Taxonomy lineage terminates outside the NCBI root",
                 f"TaxID {lineage[-1].taxid} is its own parent while tracing {self.taxid}; expected root TaxID 1",
             )
-        return lineage
+        return tuple(lineage)

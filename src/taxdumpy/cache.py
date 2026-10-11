@@ -2,11 +2,12 @@
 
 import os
 import pickle
+import shutil
 import tempfile
 from pathlib import Path
 
 SOURCE_FILES = ("merged.dmp", "delnodes.dmp", "division.dmp", "nodes.dmp", "names.dmp")
-CACHE_FORMAT_VERSION = 2
+CACHE_FORMAT_VERSION = 3
 
 
 def source_signature(directory: Path) -> dict[str, tuple[int, int]]:
@@ -42,3 +43,34 @@ def atomic_pickle_dump(path: Path, data) -> None:
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def install_caches(outputs: dict[Path, Path]) -> None:
+    """Install staged outputs, restoring previous files if replacement fails.
+
+    Each replacement is atomic. Readers opening both files concurrently may
+    observe different generations; callers must serialize cache rebuilds.
+    """
+    with tempfile.TemporaryDirectory(prefix=".taxdumpy-backup-", dir=next(iter(outputs)).parent) as directory:
+        backups = {}
+        for target in outputs:
+            if target.exists():
+                backup = Path(directory) / target.name
+                try:
+                    os.link(target, backup)
+                except OSError:
+                    # Some filesystems do not support hardlinks.
+                    shutil.copy2(target, backup)
+                backups[target] = backup
+        installed = []
+        try:
+            for target, staged in outputs.items():
+                os.replace(staged, target)
+                installed.append(target)
+        except BaseException:
+            for target in reversed(installed):
+                if target in backups:
+                    os.replace(backups[target], target)
+                else:
+                    target.unlink(missing_ok=True)
+            raise

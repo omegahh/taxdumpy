@@ -69,7 +69,7 @@ class TestTaxSQLite:
     def test_delnodes_property(self, sample_taxsqlite):
         """Test the delnodes property."""
         del_nodes = sample_taxsqlite.delnodes
-        assert isinstance(del_nodes, set)
+        assert isinstance(del_nodes, frozenset)
         assert 3451490 in del_nodes
         assert 3451488 in del_nodes
 

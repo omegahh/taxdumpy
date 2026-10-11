@@ -28,13 +28,12 @@ keywords = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-	"rapidfuzz",
-	"tqdm"
+	"rapidfuzz"
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "pytest-cov", "pytest-mock", "build"]
+dev = ["ruff", "pytest", "pytest-cov", "build", "twine"]
 
 [project.urls]
 Documentation = "https://github.com/omegahh/taxdumpy"
@@ -58,11 +57,6 @@ exclude = [
     "/.github",
     "/venv",
     "/dist",
-    "API_CONSISTENCY.md",
-    "CLAUDE.md",
-    "ERROR_HANDLING.md",
-    "TESTING.md",
-    "RELEASING.md",
     "Makefile",
     "tox.ini"
 ]

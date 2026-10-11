@@ -1,8 +1,5 @@
 """Integration tests for taxdumpy package."""
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from taxdumpy import TaxDb, Taxon, TaxSQLite, upper_rank_id
@@ -13,61 +10,34 @@ from taxdumpy.cli import main
 class TestIntegration:
     """Integration tests that test components working together."""
 
-    def test_taxdb_to_taxsqlite_consistency(self, sample_taxdump_dir):
+    def test_taxdb_to_taxsqlite_consistency(self, sample_taxdb, sample_taxsqlite):
         """Test that TaxDb and TaxSQLite return consistent results."""
-        taxdb = TaxDb(sample_taxdump_dir)
+        for taxid in [9606, 2161, 7868, 2, 1]:
+            assert sample_taxdb.get_node(taxid) == sample_taxsqlite.get_node(taxid)
 
-        with TaxSQLite(sample_taxdump_dir) as taxsqlite:
-            # Test same taxids return same basic information
-            test_taxids = [9606, 2161, 7868, 2, 1]
-
-            for taxid in test_taxids:
-                try:
-                    taxdb_node = taxdb.get_node(taxid)
-                    taxsqlite_node = taxsqlite.get_node(taxid)
-
-                    assert taxdb_node.taxid == taxsqlite_node.taxid
-                    assert taxdb_node.name == taxsqlite_node.name
-                    assert taxdb_node.rank == taxsqlite_node.rank
-                    assert taxdb_node.parent == taxsqlite_node.parent
-                    assert taxdb_node.division == taxsqlite_node.division
-
-                except Exception:
-                    # Some taxids might not exist in sample data
-                    pass
-
-    def test_taxon_with_both_backends(self, sample_taxdump_dir):
+    def test_taxon_with_both_backends(self, sample_taxdb, sample_taxsqlite):
         """Test Taxon class with both database backends."""
-        taxdb = TaxDb(sample_taxdump_dir)
+        taxon_taxdb = Taxon(9606, sample_taxdb)
+        taxon_taxsqlite = Taxon(9606, sample_taxsqlite)
 
-        with TaxSQLite(sample_taxdump_dir) as taxsqlite:
-            # Test human taxon with both backends
-            taxon_taxdb = Taxon(9606, taxdb)
-            taxon_taxsqlite = Taxon(9606, taxsqlite)
-
-            # Should have same basic properties
-            assert taxon_taxdb.taxid == taxon_taxsqlite.taxid
-            assert taxon_taxdb.name == taxon_taxsqlite.name
-            assert taxon_taxdb.rank == taxon_taxsqlite.rank
-            assert taxon_taxdb.is_legacy == taxon_taxsqlite.is_legacy
-
-            # Lineages should be the same
-            assert len(taxon_taxdb.lineage) == len(taxon_taxsqlite.lineage)
-            assert taxon_taxdb.taxid_lineage == taxon_taxsqlite.taxid_lineage
-            assert taxon_taxdb.rank_lineage == taxon_taxsqlite.rank_lineage
-            assert taxon_taxdb.name_lineage == taxon_taxsqlite.name_lineage
+        assert taxon_taxdb.taxid == taxon_taxsqlite.taxid
+        assert taxon_taxdb.name == taxon_taxsqlite.name
+        assert taxon_taxdb.rank == taxon_taxsqlite.rank
+        assert taxon_taxdb.is_legacy == taxon_taxsqlite.is_legacy
+        assert taxon_taxdb.lineage == taxon_taxsqlite.lineage
+        assert taxon_taxdb.taxid_lineage == taxon_taxsqlite.taxid_lineage
+        assert taxon_taxdb.rank_lineage == taxon_taxsqlite.rank_lineage
+        assert taxon_taxdb.name_lineage == taxon_taxsqlite.name_lineage
 
     def test_upper_rank_id_integration(self, sample_taxdb):
         """Test upper_rank_id function with real data."""
         # Test with human (species level)
         human_taxon = Taxon(9606, sample_taxdb)
 
-        # Only test if the lineage has the required ranks
-        if "genus" in human_taxon.rank_lineage:
-            genus_id = upper_rank_id(human_taxon, sample_taxdb, "genus")
-            genus_taxon = Taxon(genus_id, sample_taxdb)
-            assert genus_taxon.rank == "genus"
-            assert genus_id in human_taxon.taxid_lineage
+        genus_id = upper_rank_id(human_taxon, "genus")
+        assert genus_id == 9605
+        assert Taxon(genus_id, sample_taxdb).rank == "genus"
+        assert genus_id in human_taxon.taxid_lineage
 
     def test_legacy_taxid_resolution(self, sample_taxdb):
         """Test legacy taxid resolution end-to-end."""
@@ -87,77 +57,22 @@ class TestIntegration:
 
     def test_search_and_retrieve_workflow(self, sample_taxdb):
         """Test typical workflow: search for organism, then get details."""
-        # Search for human-related terms
-        search_results = sample_taxdb._rapid_fuzz("human", limit=5)
-
-        human_result = None
-        for result in search_results:
-            if result["taxid"] == 9606:
-                human_result = result
-                break
-
-        if human_result:
-            # Get detailed information
-            human_taxon = Taxon(human_result["taxid"], sample_taxdb)
-            assert human_taxon.name == "Homo sapiens"
-            assert human_taxon.rank == "species"
-
-            # Check lineage makes sense
-            assert len(human_taxon.lineage) > 1
-            assert human_taxon.lineage[0].taxid == 9606  # Self should be first
+        search_results = sample_taxdb.search("Homo sapiens", limit=5)
+        human_result = next(result for result in search_results if result["taxid"] == 9606)
+        human_taxon = Taxon(human_result["taxid"], sample_taxdb)
+        assert human_taxon.name == "Homo sapiens"
+        assert human_taxon.rank == "species"
+        assert len(human_taxon.lineage) > 1
+        assert human_taxon.lineage[0].taxid == 9606
 
     @pytest.mark.slow
-    def test_database_rebuild_consistency(self, sample_taxdump_dir):
+    def test_database_rebuild_consistency(self, cached_dir):
         """Test that rebuilding database gives consistent results."""
-        # Create first database
-        with tempfile.TemporaryDirectory() as temp_dir1:
-            temp_path1 = Path(temp_dir1)
-
-            # Copy sample data
-            for file in [
-                "nodes.dmp",
-                "names.dmp",
-                "merged.dmp",
-                "delnodes.dmp",
-                "division.dmp",
-            ]:
-                src = sample_taxdump_dir / file
-                dst = temp_path1 / file
-                dst.write_text(src.read_text())
-
-            # Build first database
-            assert main(["cache", "-d", str(temp_path1)]) == 0
-            taxsqlite1 = TaxSQLite(temp_path1)
-            node1 = taxsqlite1.get_node(9606)
-            taxsqlite1.close()
-
-            # Create second database from same data
-            with tempfile.TemporaryDirectory() as temp_dir2:
-                temp_path2 = Path(temp_dir2)
-
-                # Copy same data
-                for file in [
-                    "nodes.dmp",
-                    "names.dmp",
-                    "merged.dmp",
-                    "delnodes.dmp",
-                    "division.dmp",
-                ]:
-                    src = sample_taxdump_dir / file
-                    dst = temp_path2 / file
-                    dst.write_text(src.read_text())
-
-                # Build second database
-                assert main(["cache", "-d", str(temp_path2)]) == 0
-                taxsqlite2 = TaxSQLite(temp_path2)
-                node2 = taxsqlite2.get_node(9606)
-                taxsqlite2.close()
-
-                # Should be identical
-                assert node1.taxid == node2.taxid
-                assert node1.name == node2.name
-                assert node1.rank == node2.rank
-                assert node1.parent == node2.parent
+        with TaxSQLite(cached_dir) as db:
+            before = db.get_node(9606)
+        assert main(["cache", "-d", str(cached_dir)]) == 0
+        with TaxSQLite(cached_dir) as db:
+            assert db.get_node(9606) == before
 
     def test_package_imports(self):
         """Test that all expected symbols can be imported from package."""

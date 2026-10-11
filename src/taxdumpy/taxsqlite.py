@@ -11,12 +11,11 @@ import tempfile
 from functools import cached_property
 from pathlib import Path
 
-from rapidfuzz import fuzz, process
-
 from taxdumpy.ansi import u_str
-from taxdumpy.basic import Node, TaxdumpFileError, TaxidError, ValidationError
+from taxdumpy.basic import DatabaseCorruptionError, Node, TaxdumpFileError, TaxidError
 from taxdumpy.cache import CACHE_FORMAT_VERSION, cache_is_stale, source_signature
-from taxdumpy.database import SearchResult, TaxonomyDatabase
+from taxdumpy.database import TaxonomyDatabase
+from taxdumpy.parsers import check_sources, deleted_rows, division_rows, merged_rows, name_rows, node_rows
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -46,10 +45,12 @@ class TaxSQLite(TaxonomyDatabase):
         self._db_path = self._taxdump_dir / "taxdump.sqlite"
 
     @classmethod
-    def _build_cache(cls, taxdump_dir: Path | str, verbose: bool = False) -> None:
+    def _build_cache(cls, taxdump_dir: Path | str, verbose: bool = False, *, output: Path | None = None) -> None:
         """Build the SQLite cache for the CLI cache command."""
         database = cls.__new__(cls)
         database._configure(taxdump_dir, verbose)
+        if output is not None:
+            database._db_path = output
         database._create_database()
 
     def _open_cached_database(self) -> None:
@@ -73,7 +74,7 @@ class TaxSQLite(TaxonomyDatabase):
             if self._conn.execute("PRAGMA user_version").fetchone()[0] != CACHE_FORMAT_VERSION:
                 raise TaxdumpFileError(
                     self._db_path.name,
-                    "Unsupported cache version; rebuild to include all name classes",
+                    "Unsupported cache version; rebuild with the current taxdumpy version",
                     f"Run 'taxdumpy cache -d {self._taxdump_dir}' to rebuild it",
                 )
         except TaxdumpFileError:
@@ -115,17 +116,11 @@ class TaxSQLite(TaxonomyDatabase):
             tmp_path.unlink(missing_ok=True)
             raise
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if hasattr(self, "_conn"):
-            self._conn.close()
-
     def close(self):
-        """Close SQLite connection"""
+        """Close the connection and release materialized global query caches."""
         if hasattr(self, "_conn"):
             self._conn.close()
+        super().close()
 
     def _check_tables(self) -> bool:
         rows = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -155,6 +150,7 @@ class TaxSQLite(TaxonomyDatabase):
         return self._conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
 
     def _build_database(self, conn: sqlite3.Connection):
+        check_sources(self._taxdump_dir)
         signature = source_signature(self._taxdump_dir)
         try:
             if self._verbose:
@@ -190,55 +186,24 @@ class TaxSQLite(TaxonomyDatabase):
                     """
             )
 
-            # 2) Parsing merged.dmp and division.dmp
-            old2new = self._import_merged()
-            div2code = self._import_divcodes()
-
-            # 3) Insert Nodes
-            def node_rows():
-                with open(self._taxdump_dir / "nodes.dmp", "r") as f:
-                    for line in f:
-                        cols = line.split("\t")
-                        taxid = int(cols[0])
-                        parent = int(cols[2])
-                        parent = old2new.get(parent, parent)
-                        rank = cols[4]
-                        div_id = int(cols[8])
-                        divc = div2code.get(div_id, f"UNKNOWN_{div_id}")
-                        yield taxid, parent, rank, divc
-
-            c.executemany("INSERT INTO nodes VALUES (?,?,?,?)", node_rows())
-
-            # 4) Stream all name classes without holding names.dmp in memory.
-            c.executemany("INSERT OR IGNORE INTO names VALUES (?,?,?)", self._import_names())
-
-            # 5) Insert Legacy Taxids
+            old2new = dict(merged_rows(self._taxdump_dir))
+            divisions = dict(division_rows(self._taxdump_dir))
+            try:
+                c.executemany("INSERT INTO nodes VALUES (?,?,?,?)", node_rows(self._taxdump_dir, old2new, divisions))
+            except sqlite3.IntegrityError as error:
+                raise TaxdumpFileError("nodes.dmp", "Duplicate TaxID in node records") from error
+            c.executemany("INSERT OR IGNORE INTO names VALUES (?,?,?)", name_rows(self._taxdump_dir))
             c.executemany("INSERT INTO merged VALUES (?,?)", old2new.items())
-
-            # 6) Insert Deleted Taxids, so the database is self-contained and
-            #    does not need the .dmp files at query time.
-            c.executemany("INSERT INTO delnodes VALUES (?)", ((t,) for t in self._import_delnodes()))
+            c.executemany("INSERT OR IGNORE INTO delnodes VALUES (?)", ((t,) for t in deleted_rows(self._taxdump_dir)))
             c.executemany("INSERT INTO source_files VALUES (?,?,?)", ((n, *values) for n, values in signature.items()))
-            for statement in (
-                "CREATE INDEX idx_names_name ON names(name)",
-                "CREATE INDEX idx_names_taxid ON names(taxid)",
-                "CREATE INDEX idx_names_taxid_class ON names(taxid, name_class)",
-                "CREATE INDEX idx_nodes_parent ON nodes(parent)",
-            ):
-                c.execute(statement)
+            self._validate_integrity(conn)
+            # The names primary key already covers taxid and name-class lookups.
+            c.execute("CREATE INDEX idx_nodes_parent ON nodes(parent)")
             c.execute(f"PRAGMA user_version = {CACHE_FORMAT_VERSION}")
             conn.commit()
         except Exception:
             conn.rollback()
             raise
-
-    @cached_property
-    def all_names(self) -> list[str]:
-        # Loading all scientific names
-        all_names = [
-            row["name"] for row in self._conn.execute("SELECT name FROM names WHERE name_class='scientific name'")
-        ]
-        return all_names
 
     @cached_property
     def _search_names(self) -> dict[int, str]:
@@ -250,17 +215,8 @@ class TaxSQLite(TaxonomyDatabase):
         }
 
     @cached_property
-    def name2taxid(self) -> dict[str, int]:
-        # create name->taxid map
-        name2taxid = {
-            row["name"]: row["taxid"]
-            for row in self._conn.execute("SELECT taxid,name FROM names WHERE name_class='scientific name'")
-        }
-        return name2taxid
-
-    @cached_property
-    def delnodes(self) -> set[int]:
-        return {row[0] for row in self._conn.execute("SELECT taxid FROM delnodes")}
+    def delnodes(self) -> frozenset[int]:
+        return frozenset(row[0] for row in self._conn.execute("SELECT taxid FROM delnodes"))
 
     @cached_property
     def max_taxid_strlen(self) -> int:
@@ -272,122 +228,110 @@ class TaxSQLite(TaxonomyDatabase):
         row = self._conn.execute("SELECT MAX(LENGTH(rank)) FROM nodes").fetchone()
         return row[0] or 0
 
-    def _import_merged(self) -> dict[int, int]:
-        old2new = {}
-        with open(self._taxdump_dir / "merged.dmp", "r") as f:
-            for line in f:
-                parts = line.split("\t")
-                old2new[int(parts[0])] = int(parts[2])
-        return old2new
+    @staticmethod
+    def _validate_integrity(conn: sqlite3.Connection) -> None:
+        missing = conn.execute("""
+            SELECT n.taxid FROM nodes n LEFT JOIN names s
+            ON s.taxid=n.taxid AND s.name_class='scientific name'
+            GROUP BY n.taxid HAVING COUNT(s.name) != 1 LIMIT 1
+        """).fetchone()
+        if missing:
+            raise TaxdumpFileError("names.dmp", f"Expected one scientific name for TaxID {missing[0]}")
+        conflict = conn.execute("""
+            SELECT n.taxid FROM nodes n
+            WHERE EXISTS (SELECT 1 FROM merged m WHERE m.oldtid=n.taxid)
+            OR EXISTS (SELECT 1 FROM delnodes d WHERE d.taxid=n.taxid) LIMIT 1
+        """).fetchone()
+        if conflict:
+            raise TaxdumpFileError(
+                "nodes.dmp", f"Database integrity error: Current taxid {conflict[0]} is merged or deleted"
+            )
 
-    def _import_divcodes(self) -> dict[int, str]:
-        div2codes = {}
-        with open(self._taxdump_dir / "division.dmp", "r") as f:
-            for L in f:
-                div, code = L.split("\t")[0], L.split("\t")[2]
-                div2codes[int(div)] = code
-        return div2codes
+    def iter_parent_pairs(self):
+        return (
+            (row[0], row[1])
+            for row in self._conn.execute("""
+            SELECT n.taxid, n.parent FROM nodes n
+            WHERE n.taxid != n.parent
+            AND NOT EXISTS (SELECT 1 FROM merged m WHERE m.oldtid=n.taxid)
+            AND NOT EXISTS (SELECT 1 FROM delnodes d WHERE d.taxid=n.taxid)
+        """)
+        )
 
-    def _import_delnodes(self) -> set[int]:
-        s = set()
-        with open(self._taxdump_dir / "delnodes.dmp", "r") as f:
-            for L in f:
-                s.add(int(L.split("\t")[0]))
-        return s
+    def children_for(self, parents: list[int]) -> list[int]:
+        if "children_index" in self.__dict__:
+            return super().children_for(parents)
+        # Respect SQLite's variable limit while querying a whole BFS frontier.
+        children = {}
+        for start in range(0, len(parents), 900):
+            batch = parents[start : start + 900]
+            marks = ",".join("?" for _ in batch)
+            for taxid, parent in self._conn.execute(
+                f"""
+                SELECT n.taxid, n.parent FROM nodes n WHERE n.parent IN ({marks})
+                AND n.taxid != n.parent
+                AND NOT EXISTS (SELECT 1 FROM merged m WHERE m.oldtid=n.taxid)
+                AND NOT EXISTS (SELECT 1 FROM delnodes d WHERE d.taxid=n.taxid)
+                ORDER BY n.taxid
+            """,
+                batch,
+            ):
+                children.setdefault(parent, []).append(taxid)
+        return [child for parent in parents for child in children.get(parent, ())]
 
-    def _import_names(self):
-        """Yield every name class for direct insertion into the SQLite cache."""
-        with open(self._taxdump_dir / "names.dmp", "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                parts = line.split("\t")
-                taxid = int(parts[0])
-                name = parts[2].strip()
-                name_class = parts[6].strip()
-                if name and name_class:
-                    yield taxid, name, name_class
-
-    def get_names(self, taxid: int | str) -> dict[str, tuple[str, ...]]:
-        """Return all names, grouped by class, for a resolved taxid."""
-        node = self.get_node(taxid)
-        names = {}
-        for name, name_class in self._conn.execute(
-            "SELECT name, name_class FROM names WHERE taxid=? ORDER BY name_class, name", (node.taxid,)
-        ):
-            names.setdefault(name_class, []).append(name)
-        return {name_class: tuple(values) for name_class, values in names.items()}
-
-    def get_node(self, taxid: int | str) -> Node:
-        """
-        Get a taxonomy node by taxid.
-
-        Args:
-            taxid: NCBI taxonomy ID (integer or string)
-
-        Returns:
-            Node object containing taxonomy information
-
-        Raises:
-            ValidationError: If taxid is invalid format
-            TaxidError: If taxid is deleted, not found, or suggests alternatives
-        """
-        # Validate and convert taxid using the same validation as TaxDb
-        validated_taxid = self._validate_taxid(taxid)
-        original_taxid = validated_taxid
-
-        # Handle legacy/merged taxids
-        r1 = self._conn.execute("SELECT newtid FROM merged WHERE oldtid=?", (validated_taxid,)).fetchone()
-        if r1:
-            validated_taxid = r1["newtid"]
-
-        # Check if taxid has been deleted
-        # A CLI lookup needs one indexed membership check, not a Python set
-        # containing every deleted taxid. Keep delnodes lazy for bulk callers.
-        if self._conn.execute("SELECT 1 FROM delnodes WHERE taxid=?", (validated_taxid,)).fetchone():
+    def _resolve_node(self, taxid: int | str):
+        original = self._validate_taxid(taxid)
+        row = self._conn.execute(
+            """
+            SELECT COALESCE(m.newtid, ?) AS resolved, d.taxid AS deleted,
+                   n.taxid, n.parent, n.rank, n.division
+            FROM (SELECT ? AS taxid) q
+            LEFT JOIN merged m ON m.oldtid=q.taxid
+            LEFT JOIN delnodes d ON d.taxid=COALESCE(m.newtid,q.taxid)
+            LEFT JOIN nodes n ON n.taxid=COALESCE(m.newtid,q.taxid)
+        """,
+            (original, original),
+        ).fetchone()
+        if row["deleted"] is not None:
             raise TaxidError(
-                original_taxid,
-                f"TaxID {original_taxid} has been deleted from NCBI taxonomy",
+                original,
+                f"TaxID {original} has been deleted from NCBI taxonomy",
                 suggestion="Check NCBI taxonomy for updated taxid or use search function",
             )
-
-        r = self._conn.execute("SELECT * FROM nodes WHERE taxid=?", (validated_taxid,)).fetchone()
-        if not r:
-            # Try to find similar taxids for suggestions
-            suggestion = self._suggest_similar_taxids(validated_taxid)
+        if row["taxid"] is None:
             raise TaxidError(
-                original_taxid,
-                f"TaxID {original_taxid} is not found in the database",
-                suggestion=suggestion,
+                original,
+                f"TaxID {original} is not found in the database",
+                suggestion=self._suggest_similar_taxids(row["resolved"]),
             )
+        return row
 
-        name_result = self._conn.execute(
-            "SELECT name FROM names WHERE taxid=? AND name_class='scientific name'",
-            (validated_taxid,),
-        ).fetchone()
-        if not name_result:
-            raise TaxidError(
-                original_taxid,
-                f"Scientific name not found for TaxID {original_taxid}",
-                suggestion="Check if taxid exists in database",
-            )
-        name = name_result["name"]
-        eqv = self._conn.execute(
-            "SELECT group_concat(name,'|') AS a FROM names WHERE taxid=? AND name_class='equivalent name'",
-            (validated_taxid,),
-        ).fetchone()["a"]
-        acr = self._conn.execute(
-            "SELECT group_concat(name,'|') AS a FROM names WHERE taxid=? AND name_class='acronym'",
-            (validated_taxid,),
-        ).fetchone()["a"]
+    def _names_for(self, taxid: int) -> dict[str, tuple[str, ...]]:
+        names = {}
+        for name, name_class in self._conn.execute(
+            "SELECT name, name_class FROM names WHERE taxid=? ORDER BY name_class, name", (taxid,)
+        ):
+            names.setdefault(name_class, []).append(name)
+        if len(names.get("scientific name", ())) != 1:
+            raise DatabaseCorruptionError("SQLite", f"Expected one scientific name for TaxID {taxid}")
+        return {name_class: tuple(values) for name_class, values in names.items()}
+
+    def get_names(self, taxid: int | str) -> dict[str, tuple[str, ...]]:
+        """Resolve the ID and fetch all names without constructing a Node."""
+        return self._names_for(self._resolve_node(taxid)["taxid"])
+
+    def get_node(self, taxid: int | str) -> Node:
+        """Resolve metadata and fetch sorted names in two indexed statements."""
+        row = self._resolve_node(taxid)
+        names = self._names_for(row["taxid"])
         return Node(
-            taxid=r["taxid"],
-            parent=r["parent"],
-            rank=r["rank"],
-            name=name,
-            equal=eqv,
-            acronym=acr,
-            division=r["division"],
+            row["taxid"],
+            row["parent"],
+            row["rank"],
+            names["scientific name"][0],
+            "|".join(names.get("equivalent name", ())) or None,
+            "|".join(names.get("acronym", ())) or None,
+            row["division"],
         )
 
     def _suggest_similar_taxids(self, taxid: int) -> str:
@@ -407,40 +351,3 @@ class TaxSQLite(TaxonomyDatabase):
             return f"Try nearby taxids: {similar_str}, or use search function to find organisms"
         else:
             return "Use search function to find organisms by name"
-
-    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[SearchResult]:
-        """
-        Perform fuzzy search on organism names.
-
-        Args:
-            query: Search query string
-            limit: Maximum number of results to return
-
-        Returns:
-            List of dictionaries with 'name', 'taxid', and 'score' keys
-
-        Raises:
-            ValidationError: If query or limit are invalid
-        """
-        # Validate inputs (same validation as TaxDb)
-        if not isinstance(query, str):
-            raise ValidationError("query", type(query).__name__, "string")
-
-        if not query.strip():
-            return []
-
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-            raise ValidationError("limit", limit, "positive integer")
-
-        if limit > 1000:
-            limit = 1000
-
-        try:
-            # Perform fuzzy search
-            results = process.extract(query.strip(), self._search_names, scorer=fuzz.WRatio, limit=limit)
-            return [{"name": name, "taxid": taxid, "score": score} for name, score, taxid in results]
-
-        except Exception as e:
-            from taxdumpy.basic import TaxDbError
-
-            raise TaxDbError(f"Fuzzy search failed: {str(e)}")

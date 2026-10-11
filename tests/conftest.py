@@ -11,43 +11,46 @@ from taxdumpy import TaxDb, TaxSQLite
 from taxdumpy.cli import main
 
 
-@pytest.fixture
-def source_dir(tmp_path):
+def copy_sources(destination):
     for path in (Path(__file__).parent / "data").glob("*.dmp"):
-        shutil.copy2(path, tmp_path / path.name)
-    assert main(["cache", "-d", str(tmp_path)]) == 0
-    return tmp_path
+        shutil.copy2(path, destination / path.name)
+    return destination
 
 
 @pytest.fixture
-def fast_cache_dir(source_dir):
-    selection = source_dir / "selected.txt"
+def raw_source_dir(tmp_path):
+    """Taxdump source files without caches, for importer tests."""
+    return copy_sources(tmp_path)
+
+
+@pytest.fixture
+def cached_dir(raw_source_dir):
+    assert main(["cache", "-d", str(raw_source_dir)]) == 0
+    return raw_source_dir
+
+
+@pytest.fixture
+def fast_cache_dir(cached_dir):
+    selection = cached_dir / "selected.txt"
     selection.write_text("9606\n561\n")
-    assert main(["cache", "-d", str(source_dir), "-f", str(selection)]) == 0
-    return source_dir
+    assert main(["cache", "-d", str(cached_dir), "-f", str(selection)]) == 0
+    return cached_dir
 
 
 @pytest.fixture(scope="session")
 def sample_taxdump_dir() -> Generator[Path, None, None]:
     """Copy test data to a temporary directory for testing."""
-    test_data_path = Path(__file__).parent / "data"
-
     with tempfile.TemporaryDirectory() as temp_dir:
-        taxdump_path = Path(temp_dir)
-
-        # Copy all files from test data directory
-        for file_path in test_data_path.glob("*.dmp"):
-            shutil.copy2(file_path, taxdump_path)
-
+        taxdump_path = copy_sources(Path(temp_dir))
         assert main(["cache", "-d", str(taxdump_path)]) == 0
-
         yield taxdump_path
 
 
 @pytest.fixture
-def sample_taxdb(sample_taxdump_dir: Path) -> TaxDb:
+def sample_taxdb(sample_taxdump_dir: Path) -> Generator[TaxDb, None, None]:
     """Create a TaxDb instance with sample data."""
-    return TaxDb(sample_taxdump_dir)
+    with TaxDb(sample_taxdump_dir) as db:
+        yield db
 
 
 @pytest.fixture

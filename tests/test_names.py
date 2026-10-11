@@ -27,16 +27,16 @@ ALTERNATIVE_NAMES = {
 
 
 @pytest.fixture
-def names_dir(source_dir):
+def names_dir(cached_dir):
     # Repeated records and the same text in different classes must be handled
     # independently. A literal pipe is part of a name, not a separator.
-    with (source_dir / "names.dmp").open("a", encoding="utf-8") as stream:
+    with (cached_dir / "names.dmp").open("a", encoding="utf-8") as stream:
         for name_class, values in ALTERNATIVE_NAMES.items():
             for value in reversed(values):
                 for _ in range(2):
                     stream.write(f"9606\t|\t{value}\t|\t\t|\t{name_class}\t|\n")
-    assert main(["cache", "-d", str(source_dir)]) == 0
-    return source_dir
+    assert main(["cache", "-d", str(cached_dir)]) == 0
+    return cached_dir
 
 
 @pytest.mark.parametrize("backend", ["dict", "sqlite"])
@@ -127,30 +127,30 @@ def test_filtered_pickle_keeps_only_selected_taxids_names(names_dir):
             db.get_names(562)
 
 
-def test_sqlite_old_name_cache_requires_explicit_cli_rebuild(source_dir):
-    path = source_dir / "taxdump.sqlite"
+def test_sqlite_old_name_cache_requires_explicit_cli_rebuild(cached_dir):
+    path = cached_dir / "taxdump.sqlite"
     with closing(sqlite3.connect(path)) as conn:
         conn.execute("DELETE FROM names WHERE name_class NOT IN ('scientific name', 'equivalent name', 'acronym')")
         conn.execute("PRAGMA user_version = 0")
         conn.commit()
     before = path.read_bytes()
     with pytest.raises(TaxdumpFileError, match="taxdumpy cache"):
-        open_database(source_dir)
+        open_database(cached_dir)
     assert path.read_bytes() == before
-    assert main(["cache", "-d", str(source_dir)]) == 0
-    with open_database(source_dir) as db:
+    assert main(["cache", "-d", str(cached_dir)]) == 0
+    with open_database(cached_dir) as db:
         assert db.get_names(9606)["genbank common name"] == ("human",)
 
 
 @pytest.mark.parametrize("names", [None, {"synonym": []}])
-def test_pickle_with_invalid_name_maps_requires_cli_rebuild(source_dir, names):
-    path = source_dir / "taxdump.pickle"
+def test_pickle_with_invalid_name_maps_requires_cli_rebuild(cached_dir, names):
+    path = cached_dir / "taxdump.pickle"
     with path.open("rb") as stream:
         data = pickle.load(stream)
     data["names_by_class"] = names
     atomic_pickle_dump(path, data)
     with pytest.raises(TaxdumpFileError, match="taxdumpy cache"):
-        TaxDb(source_dir)
+        TaxDb(cached_dir)
 
 
 def test_old_filtered_cache_requires_filter_file_to_rebuild(fast_cache_dir):

@@ -1,89 +1,54 @@
-# Makefile for taxdumpy development
+# Development commands. Production releases use the tag-triggered OIDC workflow.
 
-.PHONY: help install test test-fast test-slow test-integration coverage lint format clean build upload docs
+.PHONY: help install test test-fast test-slow test-integration test-unit coverage coverage-xml lint format clean build upload-test ci-test ci-lint
 
-help: ## Show this help message
-	@echo "Available commands:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+help: ## Show available commands
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-install: ## Install package in development mode
-	pip install -e .[dev]
+install: ## Install development dependencies
+	python -m pip install -e '.[dev]'
 
-test: ## Run all tests
-	pytest
+test: ## Run all tests with the coverage gate
+	python -m pytest
 
-test-fast: ## Run only fast tests (skip slow/integration tests)
-	pytest -m "not slow and not integration"
+test-fast: ## Skip slow and integration tests
+	python -m pytest -m "not slow and not integration"
 
-test-slow: ## Run only slow tests
-	pytest -m "slow"
+test-slow: ## Run slow tests
+	python -m pytest -m slow
 
-test-integration: ## Run only integration tests
-	pytest -m "integration"
+test-integration: ## Run integration tests
+	python -m pytest -m integration
 
-test-unit: ## Run only unit tests
-	pytest -m "unit or not (slow or integration)"
+test-unit: ## Run unit and unmarked fast tests
+	python -m pytest -m "unit or not (slow or integration)"
 
-coverage: ## Run tests with coverage report
-	pytest --cov=taxdumpy --cov-report=html --cov-report=term-missing
+coverage: ## Generate HTML and terminal coverage reports
+	python -m pytest --cov-report=html --cov-report=term-missing
 
-coverage-xml: ## Generate XML coverage report for CI
-	pytest --cov=taxdumpy --cov-report=xml
+coverage-xml: ## Generate XML coverage for CI
+	python -m pytest --cov-report=xml
 
-lint: ## Run code linting
-	ruff format --check src/ tests/
-	ruff check src/ tests/
-	@echo "✓ Code formatting check passed"
+lint: ## Check formatting and import sorting
+	ruff format --check src/ tests/ scripts/
+	ruff check src/ tests/ scripts/
 
-format: ## Format code and sort imports with ruff
-	ruff check src/ tests/ --fix
-	ruff format src/ tests/
-	@echo "✓ Code formatted"
+format: ## Format Python and sort imports
+	ruff check src/ tests/ scripts/ --fix
+	ruff format src/ tests/ scripts/
 
-clean: ## Clean build artifacts
-	rm -rf build/
-	rm -rf dist/
-	rm -rf *.egg-info/
-	rm -rf htmlcov/
-	rm -f coverage.xml
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	find . -type f -name "*.pyo" -delete
+clean: ## Remove generated build and coverage artifacts
+	rm -rf build/ dist/ htmlcov/
+	rm -f coverage.xml .coverage
+	find src tests scripts -type d -name __pycache__ -prune -exec rm -rf {} +
 
-build: clean ## Build package
+build: ## Build wheel and sdist without removing existing artifacts
 	python -m build
 
-upload: build ## Upload package to PyPI (requires authentication)
-	python -m twine upload dist/*
+upload-test: ## Prepare and upload to TestPyPI (requires VERSION)
+	@test -n "$(VERSION)" || (echo 'Use make upload-test VERSION=1.4.0rc1'; exit 1)
+	python scripts/release.py --version "$(VERSION)" --test-pypi
 
-upload-test: build ## Upload package to Test PyPI
-	python -m twine upload --repository testpypi dist/*
+ci-test: coverage-xml ## Run CI tests
 
-docs: ## Generate documentation (placeholder)
-	@echo "Documentation generation not yet implemented"
-
-# Development helpers
-dev-install: ## Install in development mode with all dependencies
-	pip install -e .[dev]
-
-dev-test: ## Run development test suite
-	pytest -v --tb=short
-
-dev-coverage: ## Run coverage and open HTML report
-	pytest --cov=taxdumpy --cov-report=html
-	@echo "Opening coverage report..."
-	@which open >/dev/null && open htmlcov/index.html || echo "Open htmlcov/index.html in your browser"
-
-# CI/CD helpers
-ci-test: ## Run tests suitable for CI
-	pytest --cov=taxdumpy --cov-report=xml --cov-fail-under=80
-
-ci-lint: ## Run linting for CI
-	ruff format --check --diff src/ tests/
-	ruff check src/ tests/
-
-# Sample data helpers
-create-sample-data: ## Create minimal sample taxdump data for testing
-	@echo "Creating sample taxdump data..."
-	mkdir -p sample_data
-	@echo "Sample data creation not yet implemented"
+ci-lint: lint ## Run CI quality checks

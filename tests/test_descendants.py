@@ -1,5 +1,6 @@
 """Tests for subtree traversal: descendants, descendant_nodes, children index."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -104,8 +105,8 @@ class TestErrors:
             descendants(db, bad)
 
     def test_cycle_is_reported(self, sample_taxdb):
-        sample_taxdb._taxid2nodes[561].parent = 562
-        sample_taxdb._taxid2nodes[562].parent = 561
+        sample_taxdb._taxid2nodes[561] = replace(sample_taxdb._taxid2nodes[561], parent=562)
+        sample_taxdb._taxid2nodes[562] = replace(sample_taxdb._taxid2nodes[562], parent=561)
         with pytest.raises(TaxDbError, match="cycle"):
             descendants(sample_taxdb, 561)
 

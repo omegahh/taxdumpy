@@ -5,23 +5,22 @@ Created: 2025-06-30 19:51:00
 """
 
 import logging
+import os
 import pickle
+import tempfile
 from functools import cached_property
 from pathlib import Path
-from typing import Dict, List, Set
-
-from rapidfuzz import fuzz, process
 
 from taxdumpy.ansi import u_str
 from taxdumpy.basic import (
     Node,
-    TaxDbError,
     TaxdumpFileError,
     TaxidError,
     ValidationError,
 )
 from taxdumpy.cache import CACHE_FORMAT_VERSION, atomic_pickle_dump, cache_is_stale, source_signature
-from taxdumpy.database import SearchResult, TaxonomyDatabase
+from taxdumpy.database import TaxonomyDatabase
+from taxdumpy.parsers import check_sources, deleted_rows, division_rows, merged_rows, name_rows, node_rows
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -41,107 +40,66 @@ class TaxDb(TaxonomyDatabase):
         TaxdumpFileError: If the cache is missing, stale, or unreadable
     """
 
-    # Required taxdump files
-    REQUIRED_FILES = [
-        "merged.dmp",
-        "delnodes.dmp",
-        "division.dmp",
-        "nodes.dmp",
-        "names.dmp",
-    ]
-
     def __init__(self, taxdump_dir: Path | str, fast: bool = False, verbose: bool = False) -> None:
-        self._configure(taxdump_dir, fast, verbose)
+        self._configure(taxdump_dir, fast)
         self._taxid2nodes, self._old2news, self._delnodes, self._names_by_class = self._load_cached_taxdump()
+        if verbose:
+            logger.info("Loaded %s taxonomy nodes", len(self))
 
-    def _configure(self, taxdump_dir: Path | str, fast: bool, verbose: bool) -> None:
+    def _configure(self, taxdump_dir: Path | str, fast: bool) -> None:
         """Set up a database reader without creating any cache files."""
         super().__init__(taxdump_dir)
-        self._validate_init_params(taxdump_dir, fast)
+        if not isinstance(fast, bool):
+            raise ValidationError("fast", fast, "boolean")
         self._fast = fast
-        self._verbose = verbose
 
-        self._taxdbf = [self._taxdump_dir / filename for filename in self.REQUIRED_FILES]
-        self._mrgef, self._delnf, self._divsf, self._nodef, self._namef = self._taxdbf
         self._pickle = self._taxdump_dir / ("taxdump_fast.pickle" if fast else "taxdump.pickle")
 
     @classmethod
-    def _build_cache(cls, taxdump_dir: Path | str, verbose: bool = False) -> "TaxDb":
-        """Build the full pickle cache for the CLI cache command."""
+    def _import_database(cls, taxdump_dir: Path | str, verbose: bool = False) -> "TaxDb":
+        """Parse sources into memory without writing any cache."""
         database = cls.__new__(cls)
-        database._configure(taxdump_dir, False, verbose)
-        database._check_taxdump()
+        database._configure(taxdump_dir, False)
+        check_sources(database._taxdump_dir)
         database._source_signature = source_signature(database._taxdump_dir)
         database._taxid2nodes, database._old2news, database._delnodes = database._import_nodes()
-        database._save_pickle(database._taxid2nodes, database._old2news, database._delnodes)
+        if verbose:
+            logger.info("Imported %s taxonomy nodes", len(database))
+        return database
+
+    @classmethod
+    def _build_cache(cls, taxdump_dir: Path | str, verbose: bool = False, *, output: Path | None = None) -> "TaxDb":
+        """Build the full pickle cache for the CLI cache command."""
+        database = cls._import_database(taxdump_dir, verbose)
+        database._save_pickle(database._taxid2nodes, database._old2news, database._delnodes, path=output)
         return database
 
     @classmethod
     def _build_fast_cache(cls, taxdump_dir: Path | str, taxids, verbose: bool = False) -> int:
-        """Build a filtered pickle cache for the CLI cache command."""
-        database = cls._build_cache(taxdump_dir, verbose=verbose)
-        return database._write_fast_cache(taxids)
-
-    @staticmethod
-    def _validate_init_params(taxdump_dir: Path | str, fast: bool) -> None:
-        """Validate initialization parameters."""
-        if not taxdump_dir:
-            raise ValidationError("taxdump_dir", taxdump_dir, "non-empty path")
-
-        if not isinstance(fast, bool):
-            raise ValidationError("fast", fast, "boolean")
-
-        taxdump_path = Path(taxdump_dir)
-        if not taxdump_path.exists():
-            raise ValidationError("taxdump_dir", str(taxdump_path), "existing directory path")
-
-        if not taxdump_path.is_dir():
-            raise ValidationError("taxdump_dir", str(taxdump_path), "directory (not file)")
-
-    def _check_taxdump(self) -> None:
-        """Check that required taxdump files exist and are readable."""
-        # Check that all required files exist
-        missing_files = []
-        corrupted_files = []
-
-        for filepath in self._taxdbf:
-            if not filepath.exists():
-                missing_files.append(filepath.name)
-            elif filepath.stat().st_size == 0 and filepath.name not in {"merged.dmp", "delnodes.dmp"}:
-                corrupted_files.append(filepath.name)
-            else:
-                # Basic validation - check file starts with expected format
-                try:
-                    with open(filepath, "r") as f:
-                        first_line = f.readline().strip()
-                        # Different files have different formats, but all should have some tabs
-                        if not first_line and filepath.name in {"merged.dmp", "delnodes.dmp"}:
-                            continue
-                        if not first_line or "\t" not in first_line:
-                            corrupted_files.append(filepath.name)
-                except (OSError, UnicodeDecodeError):
-                    corrupted_files.append(filepath.name)
-
-        # Report issues
-        if missing_files:
-            raise TaxdumpFileError(
-                filename=", ".join(missing_files),
-                issue="Files not found",
-                solution="Download NCBI taxdump files from ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz",
-            )
-
-        if corrupted_files:
-            raise TaxdumpFileError(
-                filename=", ".join(corrupted_files),
-                issue="Files appear to be corrupted or have invalid format",
-                solution="Re-download NCBI taxdump files",
-            )
+        """Reuse a valid full cache, or import sources without persisting it."""
+        signature = source_signature(Path(taxdump_dir))
+        try:
+            database = cls(taxdump_dir, verbose=verbose)
+        except TaxdumpFileError:
+            database = cls._import_database(taxdump_dir, verbose)
+        try:
+            with tempfile.TemporaryDirectory(prefix=".taxdumpy-build-", dir=database._taxdump_dir) as directory:
+                output = Path(directory) / "taxdump_fast.pickle"
+                count = database._write_fast_cache(taxids, output=output)
+                if signature != source_signature(database._taxdump_dir):
+                    raise TaxdumpFileError(
+                        "taxdump", "Sources changed during cache construction", "Retry with stable source files"
+                    )
+                os.replace(output, database._taxdump_dir / "taxdump_fast.pickle")
+                return count
+        finally:
+            database.close()
 
     def __repr__(self):
         repr_str = f"Taxdump (Dict) Database from {u_str(self._taxdump_dir)}\n"
         repr_str += f"\tImported nodes: {len(self):,}\n"
         repr_str += f"\tLegacy nodes: {len(self._old2news):,}\n"
-        repr_str += f"\tDeleted nodes: {len(self.delnodes):,}"
+        repr_str += f"\tDeleted nodes: {len(self._delnodes):,}"
         return repr_str
 
     def __len__(self) -> int:
@@ -161,7 +119,7 @@ class TaxDb(TaxonomyDatabase):
             with open(self._pickle, "rb") as fin:
                 data = pickle.load(fin)
             if not isinstance(data, dict) or data.get("format_version") != CACHE_FORMAT_VERSION:
-                raise ValueError("Unsupported pickle cache version; rebuild to include all name classes")
+                raise ValueError("Unsupported pickle cache version; rebuild with the current taxdumpy version")
             taxid2nodes, old2news, del_taxids = data["nodes"], data["merged"], data["deleted"]
             names_by_class = data["names_by_class"]
             signature = data["sources"]
@@ -202,20 +160,12 @@ class TaxDb(TaxonomyDatabase):
             ) from e
 
     @cached_property
-    def all_names(self) -> List[str]:
-        return [node.name for node in self._taxid2nodes.values()]
-
-    @cached_property
     def _search_names(self) -> dict[int, str]:
         return {taxid: node.name for taxid, node in self._taxid2nodes.items()}
 
     @cached_property
-    def name2taxid(self) -> Dict[str, int]:
-        return {node.name: taxid for taxid, node in self._taxid2nodes.items()}
-
-    @cached_property
-    def delnodes(self) -> set[int]:
-        return self._delnodes
+    def delnodes(self) -> frozenset[int]:
+        return frozenset(self._delnodes)
 
     @cached_property
     def max_taxid_strlen(self) -> int:
@@ -225,192 +175,51 @@ class TaxDb(TaxonomyDatabase):
     def max_rank_strlen(self) -> int:
         return max((len(n.rank) for n in self._taxid2nodes.values()), default=0)
 
-    def _import_merged(self) -> Dict[int, int]:
-        """Import merged taxid mappings with error handling."""
-        old2new = {}
-        line_num = 0
-
-        try:
-            with open(self._mrgef, "r", encoding="utf-8", errors="replace") as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    try:
-                        parts = line.split("\t")
-                        if len(parts) < 3:
-                            logger.warning(f"Malformed line {line_num} in {self._mrgef.name}: {line}")
-                            continue
-
-                        old_id, new_id = parts[0], parts[2]
-                        old2new[int(old_id)] = int(new_id)
-
-                    except (ValueError, IndexError) as e:
-                        logger.warning(f"Error parsing line {line_num} in {self._mrgef.name}: {line} ({e})")
-                        continue
-
-        except (OSError, UnicodeDecodeError) as e:
-            raise TaxdumpFileError(
-                self._mrgef.name,
-                f"Cannot read file: {e}",
-                "Check file permissions and encoding",
-            )
-
-        logger.debug(f"Loaded {len(old2new):,} merged taxid mappings")
-        return old2new
-
-    def _import_divcodes(self) -> Dict[int, str]:
-        """Import division codes with error handling."""
-        div2codes = {}
-        line_num = 0
-
-        try:
-            with open(self._divsf, "r", encoding="utf-8", errors="replace") as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    try:
-                        parts = line.split("\t")
-                        if len(parts) < 3:
-                            logger.warning(f"Malformed line {line_num} in {self._divsf.name}: {line}")
-                            continue
-
-                        div_id, div_name = parts[0], parts[2]
-                        div2codes[int(div_id)] = div_name
-
-                    except (ValueError, IndexError) as e:
-                        logger.warning(f"Error parsing line {line_num} in {self._divsf.name}: {line} ({e})")
-                        continue
-
-        except (OSError, UnicodeDecodeError) as e:
-            raise TaxdumpFileError(
-                self._divsf.name,
-                f"Cannot read file: {e}",
-                "Check file permissions and encoding",
-            )
-
-        logger.debug(f"Loaded {len(div2codes):,} division codes")
-        return div2codes
-
-    def _import_delnodes(self) -> Set[int]:
-        """Import deleted taxids with error handling."""
-        del_taxids = set()
-        line_num = 0
-
-        try:
-            with open(self._delnf, "r", encoding="utf-8", errors="replace") as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    try:
-                        taxid = int(line.split("\t")[0])
-                        del_taxids.add(taxid)
-
-                    except (ValueError, IndexError) as e:
-                        logger.warning(f"Error parsing line {line_num} in {self._delnf.name}: {line} ({e})")
-                        continue
-
-        except (OSError, UnicodeDecodeError) as e:
-            raise TaxdumpFileError(
-                self._delnf.name,
-                f"Cannot read file: {e}",
-                "Check file permissions and encoding",
-            )
-
-        logger.debug(f"Loaded {len(del_taxids):,} deleted taxids")
-        return del_taxids
-
-    def _import_names(
-        self,
-    ) -> tuple[dict[int, str], dict[str, dict[int, tuple[str, ...]]]]:
-        """Import scientific names and all alternative name classes."""
-        sci_names = {}
-        names_by_class = {}
-        line_num = 0
-
-        try:
-            with open(self._namef, "r", encoding="utf-8", errors="replace") as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    try:
-                        parts = line.split("\t")
-                        if len(parts) < 7:
-                            logger.warning(f"Malformed line {line_num} in {self._namef.name}: {line}")
-                            continue
-
-                        taxid = int(parts[0])
-                        name = parts[2].strip()
-                        name_class = parts[6].strip()
-
-                        if not name:
-                            logger.warning(f"Empty name at line {line_num} in {self._namef.name}")
-                            continue
-
-                        if name_class == "scientific name":
-                            sci_names[taxid] = name
-                        elif name_class:
-                            names_by_class.setdefault(name_class, {}).setdefault(taxid, []).append(name)
-
-                    except (ValueError, IndexError) as e:
-                        logger.warning(f"Error parsing line {line_num} in {self._namef.name}: {line} ({e})")
-                        continue
-
-        except (OSError, UnicodeDecodeError) as e:
-            raise TaxdumpFileError(
-                self._namef.name,
-                f"Cannot read file: {e}",
-                "Check file permissions and encoding",
-            )
-
-        for names in names_by_class.values():
-            for taxid, values in names.items():
-                names[taxid] = tuple(sorted(set(values)))
-        logger.debug(f"Loaded {len(sci_names):,} scientific names and {len(names_by_class)} alternative name classes")
-        return sci_names, names_by_class
-
     def _import_nodes(self) -> tuple[dict[int, Node], dict[int, int], set[int]]:
-        old2news = self._import_merged()
-        div2codes = self._import_divcodes()
-        del_taxids = self._import_delnodes()
-        old_taxids = set(old2news.keys())
-        sci_names, self._names_by_class = self._import_names()
-        eq_names = self._names_by_class.get("equivalent name", {})
-        acr_names = self._names_by_class.get("acronym", {})
-        taxid2nodes = {}
-        with open(self._nodef, "r") as f:
-            for line in f:
-                line = line.split("\t")
-                taxid = int(line[0])
-                parent = int(line[2])
-                rank = line[4]
-                divid = int(line[8])
-
-                node = Node(
-                    taxid=taxid,
-                    parent=old2news[parent] if parent in old_taxids else parent,
-                    rank=rank,
-                    name=sci_names[taxid],
-                    equal=("|".join(eq_names[taxid]) if taxid in eq_names.keys() else None),
-                    acronym=("|".join(acr_names[taxid]) if taxid in acr_names.keys() else None),
-                    division=div2codes.get(divid, f"UNKNOWN_{divid}"),
+        old2news = dict(merged_rows(self._taxdump_dir))
+        divisions = dict(division_rows(self._taxdump_dir))
+        deleted = set(deleted_rows(self._taxdump_dir))
+        scientific = {}
+        alternatives = {}
+        for taxid, name, name_class in name_rows(self._taxdump_dir):
+            if name_class == "scientific name":
+                if taxid in scientific and scientific[taxid] != name:
+                    raise TaxdumpFileError("names.dmp", f"Multiple scientific names for TaxID {taxid}")
+                scientific[taxid] = name
+            else:
+                alternatives.setdefault(name_class, {}).setdefault(taxid, set()).add(name)
+        self._names_by_class = {
+            name_class: {taxid: tuple(sorted(values)) for taxid, values in names.items()}
+            for name_class, names in alternatives.items()
+        }
+        nodes = {}
+        for taxid, parent, rank, division in node_rows(self._taxdump_dir, old2news, divisions):
+            if taxid in nodes:
+                raise TaxdumpFileError("nodes.dmp", f"Duplicate TaxID {taxid}")
+            if taxid in old2news or taxid in deleted:
+                raise TaxdumpFileError(
+                    "nodes.dmp", f"Database integrity error: Current taxid {taxid} is merged or deleted"
                 )
+            if taxid not in scientific:
+                raise TaxdumpFileError("names.dmp", f"Scientific name not found for TaxID {taxid}")
+            names = self._names_by_class
+            nodes[taxid] = Node(
+                taxid,
+                parent,
+                rank,
+                scientific[taxid],
+                "|".join(names.get("equivalent name", {}).get(taxid, ())) or None,
+                "|".join(names.get("acronym", {}).get(taxid, ())) or None,
+                division,
+            )
+        return nodes, old2news, deleted
 
-                taxid2nodes[taxid] = node
-        # Finished import all current taxid nodes, check for conflicts
-        cur_taxids = set(taxid2nodes.keys())
-        overlap = old_taxids.intersection(cur_taxids)
-        if overlap:
-            raise TaxDbError(f"Database integrity error: Current taxids have legacy taxids: {sorted(overlap)}")
-
-        return taxid2nodes, old2news, del_taxids
+    def iter_parent_pairs(self):
+        return (
+            (taxid, node.parent)
+            for taxid, node in self._taxid2nodes.items()
+            if taxid != node.parent and taxid not in self._old2news and taxid not in self._delnodes
+        )
 
     def _save_pickle(self, taxid2nodes, old2news, del_taxids, *, path=None, names_by_class=None):
         """Save processed data to pickle file."""
@@ -421,13 +230,13 @@ class TaxDb(TaxonomyDatabase):
                 "sources": self._source_signature,
                 "nodes": taxid2nodes,
                 "merged": old2news,
-                "deleted": del_taxids,
+                "deleted": del_taxids if isinstance(del_taxids, set) else set(del_taxids),
                 "names_by_class": self._names_by_class if names_by_class is None else names_by_class,
             },
         )
         logger.debug(f"Saved pickle file: {self._pickle}")
 
-    def _write_fast_cache(self, taxids) -> int:
+    def _write_fast_cache(self, taxids, *, output: Path | None = None) -> int:
         """Cache selected taxids, their ancestors and descendants; return the node count.
 
         Resolve and validate every selection before writing. Descending multiple
@@ -464,8 +273,8 @@ class TaxDb(TaxonomyDatabase):
         self._save_pickle(
             nodes,
             self._old2news,
-            self.delnodes,
-            path=self._taxdump_dir / "taxdump_fast.pickle",
+            self._delnodes,
+            path=output or self._taxdump_dir / "taxdump_fast.pickle",
             names_by_class=names_by_class,
         )
         return len(nodes)
@@ -504,7 +313,7 @@ class TaxDb(TaxonomyDatabase):
             logger.debug(f"Mapped legacy taxid {original_taxid} to {validated_taxid}")
 
         # Check if taxid has been deleted
-        if validated_taxid in self.delnodes:
+        if validated_taxid in self._delnodes:
             raise TaxidError(
                 original_taxid,
                 f"TaxID {original_taxid} has been deleted from NCBI taxonomy",
@@ -540,44 +349,3 @@ class TaxDb(TaxonomyDatabase):
             return f"Try nearby taxids: {similar_str}, or use search function to find organisms"
         else:
             return "Use search function to find organisms by name"
-
-    def _rapid_fuzz(self, query: str, limit: int = 10) -> list[SearchResult]:
-        """
-        Perform fuzzy search on organism names.
-
-        Args:
-            query: Search query string
-            limit: Maximum number of results to return
-
-        Returns:
-            List of dictionaries with 'name', 'taxid', and 'score' keys
-
-        Raises:
-            ValidationError: If query or limit are invalid
-        """
-        # Validate inputs
-        if not isinstance(query, str):
-            raise ValidationError("query", type(query).__name__, "string")
-
-        if not query.strip():
-            logger.warning("Empty search query provided")
-            return []
-
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-            raise ValidationError("limit", limit, "positive integer")
-
-        if limit > 1000:
-            logger.warning(f"Search limit {limit} is very high, limiting to 1000")
-            limit = 1000
-
-        try:
-            # Perform fuzzy search
-            results = process.extract(query.strip(), self._search_names, scorer=fuzz.WRatio, limit=limit)
-            formatted_results = [{"name": name, "taxid": taxid, "score": score} for name, score, taxid in results]
-
-            logger.debug(f"Fuzzy search for '{query}' returned {len(formatted_results)} results")
-            return formatted_results
-
-        except Exception as e:
-            logger.error(f"Error during fuzzy search: {e}")
-            raise TaxDbError(f"Fuzzy search failed: {str(e)}")

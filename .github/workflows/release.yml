@@ -5,69 +5,70 @@ on:
     tags:
       - "v*"
 
-jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+permissions:
+  contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetch full history for changelog
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Verify release commit and version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          python - <<'PY'
+          import os
+          import ast
+          from pathlib import Path
+          module = ast.parse(Path("src/taxdumpy/__init__.py").read_text())
+          version = next(ast.literal_eval(n.value) for n in module.body
+                         if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__version__" for t in n.targets))
+          assert os.environ["RELEASE_TAG"] == f"v{version}", "Tag and package versions differ"
+          PY
+      - name: Install dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Check formatting and imports
+        run: |
+          ruff format --check src/ tests/ scripts/
+          ruff check src/ tests/ scripts/
+      - name: Test the tagged commit
+        run: python -m pytest
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Extract version from tag
+      - name: Build and check distributions
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Creating release for version: $VERSION"
-
-      - name: Verify package version
-        run: |
-          PACKAGE_VERSION=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/taxdumpy/__init__.py)
-          if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "Tag version $VERSION does not match package version $PACKAGE_VERSION"
-            exit 1
-          fi
-
-      - name: Generate changelog
-        run: |
-          # Get commits since last tag
-          LAST_TAG=$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || echo "")
-          if [ -n "$LAST_TAG" ]; then
-            COMMITS=$(git log ${LAST_TAG}..HEAD --oneline --no-merges)
-          else
-            COMMITS=$(git log --oneline --no-merges)
-          fi
-
-          # Create release notes
-          cat > release_notes.md << EOF
-          ## What's Changed
-
-          $(echo "$COMMITS" | sed 's/^[a-f0-9]* /- /')
-
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${LAST_TAG}...v${{ env.VERSION }}
-          EOF
-
-          cat release_notes.md
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+          python -m pip install build twine
+          python -m build
+          python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ env.VERSION }}
-          name: Release v${{ env.VERSION }}
-          body_path: release_notes.md
-          draft: false
-          prerelease: false
+          name: release-dist
+          path: dist/
+          if-no-files-found: error
 
   publish-pypi:
-    name: Publish package to PyPI
-    needs: create-release
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -75,19 +76,28 @@ jobs:
     permissions:
       contents: read
       id-token: write
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/download-artifact@v4
         with:
-          python-version: "3.11"
-
-      - name: Build package
-        run: |
-          python -m pip install --upgrade build
-          python -m build
-
-      - name: Publish package to PyPI
+          name: release-dist
+          path: dist/
+      - name: Publish checked artifacts to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  create-release:
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist/
+      - name: Announce successful release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') || contains(github.ref_name, 'b') }}

@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from taxdumpy import __version__
@@ -15,6 +16,7 @@ from taxdumpy.basic import (
     TaxidError,
     ValidationError,
 )
+from taxdumpy.cache import install_caches, source_signature
 from taxdumpy.taxdb import TaxDb
 from taxdumpy.taxon import Taxon
 from taxdumpy.taxsqlite import TaxSQLite
@@ -270,15 +272,19 @@ def _handle_cache_command(args, taxdb_path: Path) -> int:
 
     try:
         if not args.taxidf:
-            # Build SQLite database
-            print("📦 Building SQLite database...")
-            sqlite_file = taxdb_path / "taxdump.sqlite"
-            TaxSQLite._build_cache(taxdb_path, verbose=args.verbose)
-            print(f"✅ SQLite database created: {sqlite_file}")
-            # Build full pickle cache
-            print("📦 Building full pickle cache...")
-            taxdb = TaxDb._build_cache(taxdb_path, verbose=args.verbose)
-            print(f"✅ Full pickle cache created with {len(taxdb):,} taxonomy nodes")
+            signature = source_signature(taxdb_path)
+            with tempfile.TemporaryDirectory(prefix=".taxdumpy-build-", dir=taxdb_path) as directory:
+                staging = Path(directory)
+                print("📦 Building SQLite database...")
+                TaxSQLite._build_cache(taxdb_path, verbose=args.verbose, output=staging / "taxdump.sqlite")
+                print("📦 Building full pickle cache...")
+                with TaxDb._build_cache(taxdb_path, verbose=args.verbose, output=staging / "taxdump.pickle") as taxdb:
+                    if signature != source_signature(taxdb_path):
+                        raise TaxdumpFileError(
+                            "taxdump", "Sources changed during cache construction", "Retry with stable source files"
+                        )
+                    install_caches({taxdb_path / name: staging / name for name in ("taxdump.sqlite", "taxdump.pickle")})
+                    print(f"✅ Both caches created with {len(taxdb):,} taxonomy nodes")
         else:
             # Build fast pickle cache with filtered taxids
             print("📦 Building fast pickle cache...")

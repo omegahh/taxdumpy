@@ -63,10 +63,10 @@ ecoli = Taxon(511145, taxdb)  # E. coli K-12
 
 # Access lineage information
 print(human.name_lineage)
-# ['Homo sapiens', 'Homo', 'Hominidae', 'Primates', ..., 'cellular organisms']
+# ('Homo sapiens', 'Homo', 'Homininae', 'Hominidae', ..., 'root')
 
 print(human.rank_lineage)
-# ['species', 'genus', 'family', 'order', ..., 'superkingdom']
+# ('species', 'genus', 'subfamily', 'family', ..., 'no rank')
 
 # Check taxonomic properties
 print(f"Rank: {human.rank}")           # species
@@ -122,7 +122,15 @@ each name as a separate value, including names containing a literal pipe.
 Rebuild caches made by earlier versions with `taxdumpy cache -d PATH` to include
 the additional names. For a filtered cache, run `taxdumpy cache -d PATH -f FILE`
 again. Older cache formats are rejected with a rebuild instruction. Scientific
-names remain the candidates used by `search()`, `all_names`, and `name2taxid`.
+names remain the candidates used by `search()`, `all_names`, and `name2taxids`.
+
+`name2taxids` maps each scientific name to a sorted tuple of all matching taxids,
+preserving homonyms: `db.name2taxids["Leishmania"]` returns `(5658, 38568)` in
+the sample data. It replaces the singular `name2taxid` mapping.
+
+`Node` records are immutable. `Taxon.lineage` and its derived lineage properties
+are tuples, and `Taxon.names` and `name2taxids` are read-only mappings.
+`get_names()` returns an independent dictionary that callers may edit.
 
 ### Subtree Traversal
 
@@ -143,9 +151,10 @@ descendants(taxdb, 561, max_depth=1)
 species = [t for t in descendants(taxdb, 2) if taxdb.get_node(t).rank == "species"]
 ```
 
-The first call builds a parent-to-children index in one pass over the database
-and caches it, so later queries cost time proportional to the subtree returned
-rather than to the database size.
+With `TaxDb`, the first call builds and caches a parent-to-children index.
+SQLite uses indexed child queries batched by tree level, so a small subtree
+does not require loading the entire tree. `build_children_index(db)` explicitly
+loads a read-only global index for repeated traversals; `close()` releases it.
 
 ### Fuzzy Search
 
@@ -173,8 +182,8 @@ taxdb = TaxDb("/path/to/taxdump")
 human = Taxon(9606, taxdb)
 
 # RC (Rank Code) - comparable rank representation
-print(human.rc)              # RC('S') for species
-print(human.rankcode_lineage)  # [RC('S'), RC('G'), RC('F1'), RC('F'), ...]
+print(human.rc)              # S for species
+print(human.rankcode_lineage)  # (RC('S'), RC('G'), RC('F1'), RC('F'), ...)
 
 # RC comparison (lower value = higher rank)
 RC("R") < RC("D") < RC("G") < RC("S")  # True
@@ -186,12 +195,16 @@ by_family = group_taxids_by_rank(taxids, "family", taxdb)
 # {9604: [9606, 9598, 9597]}  # All in Hominidae
 
 by_genus = group_taxids_by_rank(taxids, "genus", taxdb)
-# {9605: [9606], 9598: [9598], 9597: [9597]}  # Different genera
+# {9605: [9606], 9596: [9598, 9597]}  # Homo and Pan
 
 # MPA-style lineage representation
 print(human.mpa_repr)
 # 'd__Eukaryota|k__Metazoa|p__Chordata|...|g__Homo|s__Homo_sapiens'
 ```
+
+Grouping uses the exact canonical rank or the closest higher canonical rank.
+It excludes subranks and unranked clades, skips invalid/unknown input IDs, and
+propagates database corruption errors.
 
 ## Command Line Interface
 
@@ -217,8 +230,10 @@ taxdumpy cache -d /path/to/taxdump
 taxdumpy cache -d /path/to/taxdump -f important_taxids.txt
 ```
 
-The filtered command rebuilds the filtered pickle cache and does not rebuild
-SQLite. Queries outside the subset require the full database.
+The filtered command writes only `taxdump_fast.pickle`. It reuses a valid full
+pickle when available; otherwise it parses sources without writing either full
+cache. Invalid selections preserve existing caches. Queries outside the subset
+require the full database.
 
 ### Search Operations
 
@@ -335,9 +350,10 @@ full pickle or SQLite cache reports an error instead of rebuilding it. Missing, 
 or unreadable filtered caches raise an error; recreate them with
 `taxdumpy cache -f FILE` so the selection is explicit.
 
-Original three-part pickles remain readable, and legacy caches use source
-modification times to detect changes. Valid caches remain usable after the
-source `.dmp` files are removed. Rebuilding requires the source files again.
+Cache format 3 stores immutable nodes and all name classes. Older pickle and
+SQLite formats require a CLI rebuild, including format 2 caches. Valid caches
+remain usable after source `.dmp` files are removed. Rebuilding requires the
+source files again.
 
 To rebuild caches, run the CLI again:
 
@@ -345,10 +361,14 @@ To rebuild caches, run the CLI again:
 taxdumpy cache -d /path/to/taxdump
 ```
 
-Each cache is replaced atomically only after its new contents are written
-successfully. A failed rebuild preserves the previous file. Database API
-constructors only read existing caches and report the CLI command when a cache
-is missing, stale, or unreadable.
+The full cache command stages and validates both backends before installing
+either, and rolls back installed files if a later replacement fails. Each file
+is replaced atomically; opening both files during installation can observe
+different generations. Run rebuild commands one at a time with stable sources.
+A preserved cache may still be stale if its sources changed. API constructors
+only read existing caches and report the CLI command when a cache is missing,
+stale, or unreadable. Importers use strict UTF-8 and report malformed records
+with their filename and line number.
 
 ### Handling Merged/Legacy TaxIDs
 
@@ -378,8 +398,8 @@ except TaxidError as e:
     # Includes suggestions for similar taxids
 
 try:
-    # Signature is (tax, taxdb, rank) — a Taxon, not a bare taxid
-    rank_id = upper_rank_id(Taxon(9606, taxdb), taxdb, "invalid_rank")
+    # Signature is (taxon, rank).
+    rank_id = upper_rank_id(Taxon(9606, taxdb), "invalid_rank")
 except TaxRankError as e:
     print(f"Invalid rank: {e}")
     # Includes list of valid ranks
@@ -404,7 +424,7 @@ TaxSQLite(taxdump_dir: Path | str, verbose: bool = False)
 **Taxon**: Taxonomic unit with lineage resolution
 
 ```python
-Taxon(taxid: int | str, taxdb: TaxDb | TaxSQLite)
+Taxon(taxid: int | str, taxdb: TaxonomyDatabase)
 
 # Properties
 .name: str                # Scientific name
@@ -412,7 +432,7 @@ Taxon(taxid: int | str, taxdb: TaxDb | TaxSQLite)
 .division: str            # NCBI division
 .parent: int              # Parent taxid
 .acronym: str | None      # Acronym, if any
-.names: dict[str, tuple[str, ...]]  # All names grouped by NCBI name class (lazy)
+.names: Mapping[str, tuple[str, ...]]  # Read-only names grouped by class (lazy)
 .synonyms: tuple[str, ...]
 .common_names: tuple[str, ...]
 .genbank_common_names: tuple[str, ...]
@@ -420,11 +440,11 @@ Taxon(taxid: int | str, taxdb: TaxDb | TaxSQLite)
 .acronyms: tuple[str, ...]
 .node: Node               # Underlying node (resolved, if merged)
 .rc: RC                   # Rank code for this taxon
-.lineage: list[Node]      # Complete lineage as Node objects
-.name_lineage: list[str]  # Names from taxid to root
-.rank_lineage: list[str]  # Ranks from taxid to root
-.taxid_lineage: list[int] # Taxids from taxid to root
-.rankcode_lineage: list[RC]  # Rank codes from taxid to root
+.lineage: tuple[Node, ...] # Complete lineage as Node objects
+.name_lineage: tuple[str, ...] # Names from taxid to root
+.rank_lineage: tuple[str, ...] # Ranks from taxid to root
+.taxid_lineage: tuple[int, ...] # Taxids from taxid to root
+.rankcode_lineage: tuple[RC, ...] # Rank codes from taxid to root
 .mpa_repr: str            # MetaPhlAn-style lineage string
 .is_legacy: bool          # True if taxid was merged
 .has_species_level: bool  # True if lineage contains species rank
@@ -471,7 +491,7 @@ from taxdumpy.functions import RANKNAMES, EXTENDED_RANKS
 MPA output and the root-level `R` rank code, preserving existing integer `RC`
 values. Grouping by `root` always selects taxid 1, including viral lineages.
 
-`upper_rank_id` requires the requested higher rank or its subrank to exist in
+`upper_rank_id(taxon, rank)` requires the requested higher rank or its subrank to exist in
 the lineage; otherwise it raises `TaxRankError`. Use `get_closest_rank` or
 `get_rank_or_closest` when fallback to a higher canonical rank is desired.
 
@@ -487,8 +507,8 @@ descendants(taxdb, taxid, max_depth=None) -> list[int]
 descendant_nodes(taxdb, taxid, max_depth=None) -> list[Node]
 # Same, as Node objects. Costs one get_node per result.
 
-build_children_index(taxdb) -> dict[int, list[int]]
-# The parent-to-children index the above build and cache. Read-only.
+build_children_index(taxdb) -> Mapping[int, tuple[int, ...]]
+# Explicit global index, cached per database and released by close().
 ```
 
 ### Exceptions
@@ -507,17 +527,15 @@ from taxdumpy import (
 
 ## Performance Tips
 
-- **Single CLI Queries**: Use the default SQLite backend to avoid loading the full pickle
-- **Python Batches**: Load one `TaxDb` instance and reuse it for multiple operations
-- **Filtered Data**: Use `TaxDb(path, fast=True)` after building a subset cache;
-  startup cost and memory use depend on the subset size
-- **Environment Variables**: Set `TAXDB_PATH` to avoid repeating database paths
-- **Choose Backend**: Use `TaxSQLite` for large datasets with limited memory
-- **Batch Operations**: Process multiple TaxIDs in batches rather than individual calls
-- **Subtree Queries**: Reuse one database instance so `descendants` shares its
-  cached children index. Building it costs one pass over the database
-  (~0.4 s for 1M nodes); every query afterwards is proportional to the subtree,
-  and small subtrees resolve in microseconds
+- **Single CLI queries**: Use the default SQLite backend for indexed node and lineage lookups.
+- **Python batches**: Reuse one database instance; `TaxDb` trades startup memory for in-memory queries.
+- **Filtered data**: Build a subset with `cache -f FILE`, then use `TaxDb(path, fast=True)`.
+- **Global search**: Both backends materialize scientific-name candidates for RapidFuzz. SQLite search, `all_names`, and `name2taxids` therefore use memory proportional to the taxonomy size.
+- **Subtrees**: SQLite queries small subtrees through its parent index. `TaxDb` builds a global children index once. An explicit `build_children_index` also scans all nodes and retains the result until `close()`.
+- **Database paths**: Set `TAXDB_PATH` to avoid repeating the path.
+
+Timing and memory use depend on the taxdump, stored name classes, query workload,
+Python version, and machine. No fixed full-database performance estimate is implied.
 
 ## Use Cases
 
@@ -530,9 +548,9 @@ from taxdumpy import (
 ## Requirements
 
 - **Python**: 3.10+
-- **Dependencies**: `rapidfuzz`, `tqdm`
-- **Data**: NCBI taxdump files (~300MB compressed, ~2GB extracted)
-- **Memory**: ~500MB RAM for full database (less with SQLite backend)
+- **Dependencies**: `rapidfuzz`
+- **Data**: Extracted NCBI taxdump files for cache building; size varies by release
+- **Memory**: Depends on backend, cached subset size, stored names, and global operations
 
 ## Development & Contributing
 
@@ -562,25 +580,45 @@ pytest --cov=taxdumpy --cov-report=html
 
 ```bash
 # Format code and sort imports
-ruff format src/ tests/
-ruff check src/ tests/ --fix
+ruff format src/ tests/ scripts/
+ruff check src/ tests/ scripts/ --fix
 ```
 
 ### Release Process
 
-A pushed `v*` tag creates a GitHub Release and publishes the package to PyPI
-through the protected `pypi` GitHub Actions environment using OIDC. The tag
-must match `__version__` in `src/taxdumpy/__init__.py`, and PyPI versions cannot
-be overwritten.
+A pushed `v*` tag starts the release workflow. It tests the tagged commit on
+Python 3.10–3.13, checks Ruff, verifies the tag matches `__version__`, and requires
+the commit to belong to `main` history. It then builds and checks the wheel and
+sdist, publishes those artifacts to PyPI through OIDC, and creates the GitHub
+Release only after publishing succeeds. PyPI versions cannot be overwritten.
 
-The release helper remains available for maintainers who explicitly want its
-local version bump and remote side effects. It requires a clean worktree, runs
-tests and Ruff, updates and commits the version, pushes `origin main` and a
-version tag, removes `dist/`, and builds the package. `--upload` publishes
-through Twine. Run it only when those repository and remote changes are intended:
+The PyPI trusted publisher uses `release.yml` and the GitHub Actions environment
+`pypi`, whose protection rules allow `main` and `v*` tags. Production publishing
+is performed only by this workflow; no local Twine production upload is needed.
+
+The helper requires a clean worktree, updates the version, runs tests and Ruff,
+and builds/checks fresh artifacts in a unique directory under `dist/`. By default
+it prepares everything locally for review, without committing or pushing:
 
 ```bash
-python scripts/release.py --version 1.2.3 --upload
+python scripts/release.py --version 1.4.0
+```
+
+For an intended production release, start with a clean `main` branch and use
+`--publish`. It verifies local `main` includes remote `main`, validates/builds,
+then commits the version, tags it, and atomically pushes `main` and the tag:
+
+```bash
+python scripts/release.py --version 1.4.0 --publish
+```
+
+For TestPyPI, use the separate mode below. It uploads only freshly built artifacts
+to TestPyPI and never commits, tags, or pushes. Canonical prerelease versions
+such as `1.4.0rc1` are accepted. The old `--upload`, `--test`, and `--skip-tests`
+options have been removed.
+
+```bash
+python scripts/release.py --version 1.4.0rc1 --test-pypi
 ```
 
 ## License

@@ -1,9 +1,11 @@
 """Tests for Taxon class."""
 
+from dataclasses import replace
+
 import pytest
 
 from taxdumpy import TaxDbError, Taxon, open_database
-from taxdumpy.basic import Node
+from taxdumpy.basic import Node, TaxidError
 from taxdumpy.cli import main
 
 
@@ -32,14 +34,14 @@ class TestTaxon:
         assert not Taxon("9606", sample_taxdb).is_legacy
 
     def test_lineage_cycle_is_reported(self, sample_taxdb):
-        sample_taxdb._taxid2nodes[9606].parent = 9605
-        sample_taxdb._taxid2nodes[9605].parent = 9606
+        sample_taxdb._taxid2nodes[9606] = replace(sample_taxdb._taxid2nodes[9606], parent=9605)
+        sample_taxdb._taxid2nodes[9605] = replace(sample_taxdb._taxid2nodes[9605], parent=9606)
         with pytest.raises(TaxDbError, match="cycle"):
             Taxon(9606, sample_taxdb)
 
     @pytest.mark.parametrize("backend", ["dict", "sqlite"])
-    def test_non_root_self_parent_is_reported(self, backend, source_dir):
-        path = source_dir / "nodes.dmp"
+    def test_non_root_self_parent_is_reported(self, backend, cached_dir):
+        path = cached_dir / "nodes.dmp"
         lines = []
         for line in path.read_text().splitlines(keepends=True):
             fields = line.split("\t")
@@ -47,8 +49,8 @@ class TestTaxon:
                 fields[2] = "9605"
             lines.append("\t".join(fields))
         path.write_text("".join(lines))
-        assert main(["cache", "-d", str(source_dir)]) == 0
-        with open_database(source_dir, backend) as db:
+        assert main(["cache", "-d", str(cached_dir)]) == 0
+        with open_database(cached_dir, backend) as db:
             with pytest.raises(TaxDbError, match="outside the NCBI root"):
                 Taxon(9606, db)
 
@@ -80,7 +82,7 @@ class TestTaxon:
         taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
         # Test lineage properties
-        assert isinstance(taxon.lineage, list)
+        assert isinstance(taxon.lineage, tuple)
         assert len(taxon.lineage) > 0
         assert all(isinstance(node, Node) for node in taxon.lineage)
 
@@ -173,7 +175,7 @@ class TestTaxon:
 
     def test_invalid_taxid(self, sample_taxdb):
         """Test creating Taxon with invalid taxid."""
-        with pytest.raises(Exception):  # Should raise TaxidError or similar
+        with pytest.raises(TaxidError):
             Taxon(999999, sample_taxdb)
 
     def test_taxon_equality_comparison(self, sample_taxdb, sample_taxids):

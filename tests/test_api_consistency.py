@@ -1,5 +1,7 @@
 """Tests for API consistency across database backends."""
 
+from collections.abc import Mapping
+
 import pytest
 from rapidfuzz import process
 
@@ -34,7 +36,7 @@ class TestAbstractBaseClass:
         ]
         required_properties = [
             "all_names",
-            "name2taxid",
+            "name2taxids",
             "delnodes",
             "max_taxid_strlen",
             "max_rank_strlen",
@@ -52,8 +54,7 @@ class TestAbstractBaseClass:
             for prop_name in required_properties:
                 assert hasattr(db, prop_name)
 
-            if hasattr(db, "close"):
-                db.close()
+            db.close()
 
 
 class TestFactoryFunction:
@@ -108,11 +109,11 @@ class TestFactoryFunction:
         assert db._fast is True
 
     @pytest.mark.parametrize("backend, filename", [("sqlite", "taxdump.sqlite"), ("dict", "taxdump.pickle")])
-    def test_missing_cache_is_not_built_from_sources(self, source_dir, backend, filename):
-        cache = source_dir / filename
+    def test_missing_cache_is_not_built_from_sources(self, cached_dir, backend, filename):
+        cache = cached_dir / filename
         cache.unlink()
         with pytest.raises(TaxdumpFileError, match="taxdumpy cache"):
-            open_database(source_dir, backend)
+            open_database(cached_dir, backend)
         assert not cache.exists()
 
 
@@ -120,8 +121,8 @@ class TestFactoryFunction:
 class TestPolymorphicBehavior:
     """Test that both backends behave identically."""
 
-    def test_empty_database_widths(self, backend, source_dir):
-        with open_database(source_dir, backend) as db:
+    def test_empty_database_widths(self, backend, cached_dir):
+        with open_database(cached_dir, backend) as db:
             if isinstance(db, TaxDb):
                 db._taxid2nodes.clear()
             else:
@@ -163,8 +164,7 @@ class TestPolymorphicBehavior:
         assert node1.name == node2.name
         assert node1.rank == node2.rank
 
-        if hasattr(db, "close"):
-            db.close()
+        db.close()
 
     def test_fuzzy_search_consistent_signature(self, backend, sample_taxdump_dir):
         """Test fuzzy_search method consistency."""
@@ -174,8 +174,7 @@ class TestPolymorphicBehavior:
         result = db.fuzzy_search("human", limit=5)
         assert result is None
 
-        if hasattr(db, "close"):
-            db.close()
+        db.close()
 
     def test_rapid_fuzz_consistent_signature(self, backend, sample_taxdump_dir):
         """Test _rapid_fuzz method consistency."""
@@ -185,18 +184,16 @@ class TestPolymorphicBehavior:
         results = db._rapid_fuzz("human", limit=3)
         assert isinstance(results, list)
 
-        if results:
-            for result in results:
-                assert isinstance(result, dict)
-                assert "name" in result
-                assert "taxid" in result
-                assert "score" in result
-                assert isinstance(result["name"], str)
-                assert isinstance(result["taxid"], int)
-                assert isinstance(result["score"], (int, float))
-
-        if hasattr(db, "close"):
-            db.close()
+        assert results
+        for result in results:
+            assert isinstance(result, dict)
+            assert "name" in result
+            assert "taxid" in result
+            assert "score" in result
+            assert isinstance(result["name"], str)
+            assert isinstance(result["taxid"], int)
+            assert isinstance(result["score"], (int, float))
+        db.close()
 
     def test_len_method_consistency(self, backend, sample_taxdump_dir):
         """Test __len__ method consistency."""
@@ -206,8 +203,7 @@ class TestPolymorphicBehavior:
         assert isinstance(length, int)
         assert length > 0
 
-        if hasattr(db, "close"):
-            db.close()
+        db.close()
 
     def test_properties_consistency(self, backend, sample_taxdump_dir):
         """Test property consistency across backends."""
@@ -218,14 +214,17 @@ class TestPolymorphicBehavior:
         assert isinstance(all_names, list)
         assert all(isinstance(name, str) for name in all_names)
 
-        # Test name2taxid property
-        name2taxid = db.name2taxid
-        assert isinstance(name2taxid, dict)
-        assert all(isinstance(k, str) and isinstance(v, int) for k, v in name2taxid.items())
+        # Test name2taxids property
+        name2taxids = db.name2taxids
+        assert isinstance(name2taxids, Mapping)
+        assert all(
+            isinstance(k, str) and isinstance(v, tuple) and all(isinstance(t, int) for t in v)
+            for k, v in name2taxids.items()
+        )
 
         # Test delnodes property
         delnodes = db.delnodes
-        assert isinstance(delnodes, set)
+        assert isinstance(delnodes, frozenset)
         assert all(isinstance(taxid, int) for taxid in delnodes)
 
         # Test formatting properties
@@ -236,8 +235,7 @@ class TestPolymorphicBehavior:
         assert max_taxid_len > 0
         assert max_rank_len > 0
 
-        if hasattr(db, "close"):
-            db.close()
+        db.close()
 
 
 @pytest.mark.parametrize("backend", ["sqlite", "dict"])
@@ -265,8 +263,7 @@ class TestErrorHandlingConsistency:
         with pytest.raises(ValidationError):
             db._rapid_fuzz("test", -1)  # Negative limit
 
-        if hasattr(db, "close"):
-            db.close()
+        db.close()
 
     def test_taxid_error_consistency(self, backend, sample_taxdump_dir):
         """Test that TaxidError behavior is consistent."""
@@ -279,8 +276,7 @@ class TestErrorHandlingConsistency:
         error_msg = str(exc_info.value)
         assert "not found" in error_msg.lower()
 
-        if hasattr(db, "close"):
-            db.close()
+        db.close()
 
     def test_error_message_format_consistency(self, backend, sample_taxdump_dir, sample_taxids):
         """Test that error messages have consistent format."""
@@ -295,8 +291,7 @@ class TestErrorHandlingConsistency:
             assert "deleted" in error_msg.lower()
             assert "suggestion" in error_msg.lower() or "try" in error_msg.lower()
 
-        if hasattr(db, "close"):
-            db.close()
+        db.close()
 
 
 class TestContextManagerSupport:
@@ -386,13 +381,12 @@ class TestTypeHints:
 
             # Properties should return correct types
             assert isinstance(db.all_names, list)
-            assert isinstance(db.name2taxid, dict)
-            assert isinstance(db.delnodes, set)
+            assert isinstance(db.name2taxids, Mapping)
+            assert isinstance(db.delnodes, frozenset)
             assert isinstance(db.max_taxid_strlen, int)
             assert isinstance(db.max_rank_strlen, int)
 
-            if hasattr(db, "close"):
-                db.close()
+            db.close()
 
 
 # Integration test to ensure the whole system works together
@@ -407,23 +401,11 @@ def test_end_to_end_consistency(sample_taxdump_dir, sample_taxids):
             assert human_node.name == "Homo sapiens"
             assert human_node.rank == "species"
 
-            # 2. Search for organisms (dict backend only supports _rapid_fuzz properly)
-            search_results = db._rapid_fuzz("Homo sapiens", limit=3)
-            if backend_name == "dict":
-                assert len(search_results) > 0
-                assert any(result["name"] == "Homo sapiens" for result in search_results)
-            # Note: SQLite backend _rapid_fuzz is not fully implemented
-
-            # 3. Check database properties
+            search_results = db.search("Homo sapiens", limit=3)
+            assert search_results[0] == {"name": "Homo sapiens", "taxid": 9606, "score": 100.0}
             assert len(db) > 0
-            # Note: SQLite backend has different behavior for all_names and name2taxid
-            if backend_name == "dict":
-                assert "Homo sapiens" in db.all_names
-                assert db.name2taxid["Homo sapiens"] == sample_taxids["human"]
-            else:
-                # SQLite backend properties may not be fully implemented
-                assert isinstance(db.all_names, list)
-                assert isinstance(db.name2taxid, dict)
+            assert "Homo sapiens" in db.all_names
+            assert db.name2taxids["Homo sapiens"] == (sample_taxids["human"],)
 
             # 4. Handle errors gracefully
             with pytest.raises(TaxidError):

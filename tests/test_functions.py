@@ -34,7 +34,8 @@ class TestRankHelpers:
         human = Taxon(9606, rank_db)
         assert get_rank_taxid(human, "family") == 9604
         assert get_rank_taxid(human, "subfamily") == 207598
-        human._lineage = [replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage]
+        human = Taxon(9606, rank_db)
+        human._lineage = tuple(replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage)
         assert get_rank_taxid(human, "family") == 207598
         assert get_rank_taxid(human, "family", include_subrank=False) is None
         assert get_rank_taxid(human, "absent") is None
@@ -42,7 +43,8 @@ class TestRankHelpers:
 
     def test_canonical_ranks_with_subrank_control(self, rank_db):
         human = Taxon(9606, rank_db)
-        human._lineage = [replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage]
+        human = Taxon(9606, rank_db)
+        human._lineage = tuple(replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage)
         ranks = get_canonical_ranks(human)
         assert ranks["family"] == 207598
         assert ranks["domain"] == ranks["superkingdom"] == 2759
@@ -57,7 +59,8 @@ class TestRankHelpers:
         assert get_closest_rank(taxon, "invalid") == (None, None)
         assert get_closest_rank(Taxon(1, rank_db), "genus") == (None, None)
         human = Taxon(9606, rank_db)
-        human._lineage = [replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage]
+        human = Taxon(9606, rank_db)
+        human._lineage = tuple(replace(node, rank="clade") if node.rank == "family" else node for node in human.lineage)
         assert get_closest_rank(human, "family") == (207598, "subfamily")
         assert get_closest_rank(human, "family", include_subranks=False) == (9443, "order")
 
@@ -129,7 +132,7 @@ class TestFunctions:
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
         # Test getting genus from species
-        genus_id = upper_rank_id(human_taxon, sample_taxdb, "genus")
+        genus_id = upper_rank_id(human_taxon, "genus")
         assert genus_id == 9605
         assert Taxon(genus_id, sample_taxdb).rank == "genus"
 
@@ -139,7 +142,7 @@ class TestFunctions:
 
         # Trying to get species from species should raise error
         with pytest.raises(RuntimeError):
-            upper_rank_id(human_taxon, sample_taxdb, "species")
+            upper_rank_id(human_taxon, "species")
 
     def test_upper_rank_id_lower_rank_error(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id with lower rank (should raise error)."""
@@ -148,7 +151,7 @@ class TestFunctions:
 
         # Trying to get species from genus should raise error
         with pytest.raises(RuntimeError):
-            upper_rank_id(genus_taxon, sample_taxdb, "species")
+            upper_rank_id(genus_taxon, "species")
 
     def test_upper_rank_id_invalid_current_rank(self, sample_taxdb):
         """Test upper_rank_id with non-canonical current rank."""
@@ -157,27 +160,27 @@ class TestFunctions:
 
         # Should raise TaxRankError for non-canonical rank
         with pytest.raises(TaxRankError):
-            upper_rank_id(clade_taxon, sample_taxdb, "genus")
+            upper_rank_id(clade_taxon, "genus")
 
     def test_upper_rank_id_invalid_target_rank(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id with invalid target rank."""
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
         with pytest.raises(TaxRankError):
-            upper_rank_id(human_taxon, sample_taxdb, "invalid_rank")
+            upper_rank_id(human_taxon, "invalid_rank")
 
     def test_upper_rank_id_direct_lineage(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id when target rank exists directly in lineage."""
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
-        assert upper_rank_id(human_taxon, sample_taxdb, "family") == 9604
+        assert upper_rank_id(human_taxon, "family") == 9604
 
     def test_upper_rank_id_sub_rank(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id when sub-rank exists in lineage."""
         node = sample_taxdb.get_node(9604)
         sample_taxdb._taxid2nodes[9604] = replace(node, rank="clade")
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
-        assert upper_rank_id(human_taxon, sample_taxdb, "family") == 207598
+        assert upper_rank_id(human_taxon, "family") == 207598
 
     def test_upper_rank_id_missing_rank_does_not_guess_parent(self, sample_taxdb, sample_taxids):
         """Clades between ranks cannot substitute for a missing canonical rank."""
@@ -186,7 +189,7 @@ class TestFunctions:
                 sample_taxdb._taxid2nodes[taxid] = replace(node, rank="clade")
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
         with pytest.raises(TaxRankError, match="absent"):
-            upper_rank_id(human_taxon, sample_taxdb, "family")
+            upper_rank_id(human_taxon, "family")
 
     def test_rank_level_consistency(self):
         """Test that rank levels are consistent and ordered."""
@@ -208,7 +211,7 @@ class TestFunctions:
         human = Taxon(9606, sample_taxdb)
         for rank in ("domain", "superkingdom"):
             assert get_rank_taxid(human, rank) == 2759
-            assert upper_rank_id(human, sample_taxdb, rank) == 2759
+            assert upper_rank_id(human, rank) == 2759
             assert get_closest_rank(human, rank) == (2759, "domain")
             assert get_rank_or_closest(human, rank, max_distance=0) == 2759
             assert group_taxids_by_rank([9606], rank, sample_taxdb) == {2759: [9606]}
@@ -261,7 +264,7 @@ class TestFunctions:
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
         codes = human_taxon.rankcode_lineage
 
-        assert isinstance(codes, list)
+        assert isinstance(codes, tuple)
         assert len(codes) > 0
         # Should be RC objects
         assert all(isinstance(c, RC) for c in codes)

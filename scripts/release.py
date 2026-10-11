@@ -1,181 +1,123 @@
 #!/usr/bin/env python3
-"""
-Release helper script for taxdumpy.
+"""Prepare a release locally; --publish pushes a tag for GitHub's OIDC publisher.
 
-This script helps automate the release process by:
-1. Checking that all tests pass
-2. Updating the version number
-3. Creating a git tag
-4. Building the package
-5. Optionally uploading to PyPI
-
-Usage:
-    python scripts/release.py --version 1.2.3 [--test] [--upload]
+--test-pypi uploads only to TestPyPI and never commits, tags, or pushes.
+Production uploads are performed exclusively by .github/workflows/release.yml.
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
-def run_command(cmd, check=True, capture_output=False):
-    """Run a shell command."""
-    print(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, check=check, capture_output=capture_output, text=True)
-    if capture_output:
-        return result.stdout.strip()
-    return result
+def run_command(cmd, *, capture_output=False, env=None):
+    """Run an argument list without shell expansion."""
+    print(f"Running: {' '.join(map(str, cmd))}")
+    result = subprocess.run(cmd, check=True, capture_output=capture_output, text=True, env=env)
+    return result.stdout.strip() if capture_output else result
 
 
 def validate_version(version):
-    """Validate semantic version format."""
-    pattern = r"^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$"
-    if not re.match(pattern, version):
-        raise ValueError(f"Invalid version format: {version}")
+    """Require canonical PyPI version spelling, including a/b/rc prereleases."""
+    if not re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:(?:a|b|rc)(?:0|[1-9]\d*))?", version):
+        raise ValueError(f"Invalid version: {version}; use 1.2.3 or 1.2.3rc1")
 
 
 def check_working_directory():
-    """Ensure working directory is clean."""
-    status = run_command("git status --porcelain", capture_output=True)
-    if status:
-        print("❌ Working directory is not clean:")
-        print(status)
-        sys.exit(1)
-    print("✅ Working directory is clean")
+    if run_command(["git", "status", "--porcelain"], capture_output=True):
+        raise ValueError("Working directory must be clean before preparing a release")
+
+
+def check_production_branch(version):
+    if run_command(["git", "branch", "--show-current"], capture_output=True) != "main":
+        raise ValueError("Production releases must be prepared on main")
+    run_command(["git", "fetch", "origin", "main"])
+    run_command(["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"])
+    result = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/tags/v{version}"])
+    if result.returncode == 0:
+        raise ValueError(f"Tag v{version} already exists")
+    if result.returncode != 1:
+        raise ValueError("Could not check existing release tags")
 
 
 def run_tests():
-    """Run the test suite."""
-    print("🧪 Running tests...")
-    run_command("python -m pytest tests/")
-    print("✅ All tests passed")
-
-
-def check_code_quality():
-    """Run code quality checks."""
-    print("🎨 Checking code formatting...")
-    run_command("ruff format --check src/ tests/")
-    run_command("ruff check src/ tests/")
-    print("✅ Code formatting is correct")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path("src").resolve()) + os.pathsep + env.get("PYTHONPATH", "")
+    run_command([sys.executable, "-m", "pytest"], env=env)
+    run_command(["ruff", "format", "--check", "src/", "tests/", "scripts/"])
+    run_command(["ruff", "check", "src/", "tests/", "scripts/"])
 
 
 def update_version_in_file(file_path, version):
-    """Update version in __init__.py."""
-    content = file_path.read_text()
-    updated = re.sub(
-        r'^__version__ = ".*"',
-        f'__version__ = "{version}"',
-        content,
-        flags=re.MULTILINE,
+    content = file_path.read_text(encoding="utf-8")
+    updated, count = re.subn(r'^__version__ = ".*"$', f'__version__ = "{version}"', content, flags=re.MULTILINE)
+    if count != 1:
+        raise ValueError("Expected exactly one __version__ assignment")
+    file_path.write_text(updated, encoding="utf-8")
+
+
+def build_package(version):
+    """Build and check only fresh artifacts, preserving previous builds."""
+    Path("dist").mkdir(exist_ok=True)
+    output = Path(tempfile.mkdtemp(prefix=f"v{version}-", dir="dist"))
+    run_command([sys.executable, "-m", "build", "--outdir", str(output)])
+    artifacts = sorted([*output.glob("*.whl"), *output.glob("*.tar.gz")])
+    if len(artifacts) != 2:
+        raise ValueError("Expected one wheel and one sdist")
+    run_command([sys.executable, "-m", "twine", "check", *map(str, artifacts)])
+    return artifacts
+
+
+def publish_tag(version):
+    """Commit and push the checked release; GitHub handles production publishing."""
+    run_command(["git", "add", "src/taxdumpy/__init__.py"])
+    if run_command(["git", "diff", "--cached", "--name-only"], capture_output=True):
+        run_command(["git", "commit", "-m", f"Bump version to {version}"])
+    run_command(["git", "tag", f"v{version}"])
+    run_command(["git", "push", "--atomic", "origin", "main", f"refs/tags/v{version}"])
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser.add_argument("--version", required=True, help="Version to prepare, e.g. 1.2.3 or 1.2.3rc1")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--publish", action="store_true", help="Commit and push main and a tag for production OIDC publishing"
     )
-    file_path.write_text(updated)
-    print(f"✅ Updated version to {version} in {file_path}")
-
-
-def create_git_tag(version):
-    """Create and push git tag."""
-    tag = f"v{version}"
-
-    # Check if tag already exists
-    try:
-        run_command(f"git rev-parse {tag}", capture_output=True)
-        print(f"❌ Tag {tag} already exists")
-        sys.exit(1)
-    except subprocess.CalledProcessError:
-        pass  # Tag doesn't exist, which is good
-
-    # Commit version bump
-    run_command(f"git add src/taxdumpy/__init__.py")
-    run_command(f"git commit -m 'Bump version to {version}'")
-
-    # Create and push tag
-    run_command(f"git tag {tag}")
-    run_command(f"git push origin main")
-    run_command(f"git push origin {tag}")
-    print(f"✅ Created and pushed tag {tag}")
-
-
-def build_package():
-    """Build the package."""
-    print("📦 Building package...")
-    # Clean dist directory manually
-    run_command("rm -rf dist/", check=False)
-    run_command("python -m build")
-    print("✅ Package built successfully")
-
-
-def upload_to_pypi(test=False):
-    """Upload package to PyPI or Test PyPI."""
-    repo = "testpypi" if test else "pypi"
-    print(f"🚀 Uploading to {'Test ' if test else ''}PyPI...")
-
-    # Check if twine is installed
-    try:
-        run_command("python -m twine --version", capture_output=True)
-    except subprocess.CalledProcessError:
-        print("❌ twine not found. Please install it with: pip install twine")
-        sys.exit(1)
-
-    if test:
-        run_command("python -m twine upload --repository testpypi dist/*")
-    else:
-        run_command("python -m twine upload dist/*")
-
-    print(f"✅ Successfully uploaded to {'Test ' if test else ''}PyPI")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Release taxdumpy package")
-    parser.add_argument("--version", required=True, help="Version to release (e.g., 1.2.3)")
-    parser.add_argument("--test", action="store_true", help="Upload to Test PyPI instead")
-    parser.add_argument("--upload", action="store_true", help="Upload to PyPI after building")
-    parser.add_argument("--skip-tests", action="store_true", help="Skip running tests")
-
-    args = parser.parse_args()
-
+    mode.add_argument(
+        "--test-pypi", action="store_true", help="Upload fresh artifacts to TestPyPI without pushing tags"
+    )
+    args = parser.parse_args(argv)
     try:
         validate_version(args.version)
-    except ValueError as e:
-        print(f"❌ {e}")
-        sys.exit(1)
-
-    print(f"🚀 Starting release process for version {args.version}")
-
-    # Pre-flight checks
-    check_working_directory()
-
-    if not args.skip_tests:
-        run_tests()
-        check_code_quality()
-
-    # Update version
-    init_file = Path("src/taxdumpy/__init__.py")
-    if not init_file.exists():
-        print("❌ src/taxdumpy/__init__.py not found")
-        sys.exit(1)
-
-    update_version_in_file(init_file, args.version)
-
-    # Create git tag
-    create_git_tag(args.version)
-
-    # Build package
-    build_package()
-
-    # Upload if requested
-    if args.upload:
-        upload_to_pypi(test=args.test)
-    else:
-        print("📝 Package built. Use --upload to upload to PyPI")
-        if args.test:
-            print("💡 Use: python -m twine upload --repository testpypi dist/*")
+        check_working_directory()
+        if args.publish:
+            check_production_branch(args.version)
+        init_file = Path("src/taxdumpy/__init__.py")
+        original = init_file.read_bytes()
+        try:
+            update_version_in_file(init_file, args.version)
+            run_tests()
+            artifacts = build_package(args.version)
+        except BaseException:
+            init_file.write_bytes(original)
+            raise
+        if args.publish:
+            publish_tag(args.version)
+            print(f"Pushed v{args.version}; follow the GitHub Release workflow for publication status")
+        elif args.test_pypi:
+            run_command([sys.executable, "-m", "twine", "upload", "--repository", "testpypi", *map(str, artifacts)])
         else:
-            print("💡 Use: python -m twine upload dist/*")
-
-    print(f"🎉 Release {args.version} completed successfully!")
+            print(f"Prepared {args.version} locally: {artifacts[0].parent}")
+        return 0
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        print(f"Release failed: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

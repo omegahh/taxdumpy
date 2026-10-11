@@ -1,8 +1,11 @@
 """Tests for error handling throughout the package."""
 
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 
-from taxdumpy import TaxDb, Taxon
+from taxdumpy import TaxDb, Taxon, TaxSQLite
 from taxdumpy.basic import (
     DatabaseCorruptionError,
     TaxDbError,
@@ -12,6 +15,7 @@ from taxdumpy.basic import (
     TaxRankError,
     ValidationError,
 )
+from taxdumpy.cache import SOURCE_FILES
 from taxdumpy.cli import main
 from taxdumpy.functions import upper_rank_id
 
@@ -144,7 +148,7 @@ class TestTaxDbFileHandling:
     def test_corrupted_taxdump_files(self, temp_dir):
         """Test behavior with corrupted taxdump files."""
         # Create files with invalid content
-        for filename in TaxDb.REQUIRED_FILES:
+        for filename in SOURCE_FILES:
             (temp_dir / filename).write_text("invalid content without tabs")
 
         assert main(["cache", "-d", str(temp_dir)]) == 1
@@ -155,7 +159,7 @@ class TestTaxDbFileHandling:
     def test_empty_taxdump_files(self, temp_dir):
         """Test behavior with empty taxdump files."""
         # Create empty files
-        for filename in TaxDb.REQUIRED_FILES:
+        for filename in SOURCE_FILES:
             (temp_dir / filename).touch()
 
         assert main(["cache", "-d", str(temp_dir)]) == 1
@@ -163,10 +167,18 @@ class TestTaxDbFileHandling:
             TaxDb(temp_dir)
         assert "cache not found" in str(exc_info.value).lower()
 
-    def test_permission_error_reading_files(self, sample_taxdump_dir):
-        """Test permission error when reading files."""
-        # Skip this test as it's hard to mock properly
-        pytest.skip("Permission error test requires complex mocking")
+    def test_permission_error_reading_files(self, raw_source_dir, capsys):
+        original = Path.open
+
+        def open_file(path, *args, **kwargs):
+            if path.name == "names.dmp":
+                raise PermissionError("permission denied")
+            return original(path, *args, **kwargs)
+
+        with patch.object(Path, "open", open_file):
+            assert main(["cache", "-d", str(raw_source_dir)]) == 1
+        assert "names.dmp" in capsys.readouterr().err
+        assert not list(raw_source_dir.glob("taxdump.*"))
 
     def test_corrupted_pickle_file(self, sample_taxdump_dir, temp_dir):
         """Test handling of corrupted pickle file."""
@@ -175,10 +187,14 @@ class TestTaxDbFileHandling:
         pickle_file.write_bytes(b"corrupted pickle data")
 
         # Copy taxdump files to temp directory
-        for filename in TaxDb.REQUIRED_FILES:
+        for filename in SOURCE_FILES:
             src = sample_taxdump_dir / filename
             dst = temp_dir / filename
             dst.write_text(src.read_text())
+
+        with pytest.raises(TaxdumpFileError, match="unreadable"):
+            TaxDb(temp_dir)
+        assert pickle_file.read_bytes() == b"corrupted pickle data"
 
         # Rebuild through the CLI, then open the resulting cache.
         assert main(["cache", "-d", str(temp_dir)]) == 0
@@ -305,16 +321,16 @@ class TestFunctionValidation:
         """Test upper_rank_id with invalid rank."""
         taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
-        with pytest.raises(Exception):  # Should raise TaxRankError or AssertionError
-            upper_rank_id(taxon, sample_taxdb, "invalid_rank")
+        with pytest.raises(TaxRankError):
+            upper_rank_id(taxon, "invalid_rank")
 
     def test_upper_rank_id_non_canonical_current_rank(self, sample_taxdb, sample_taxids):
         """Test upper_rank_id with non-canonical current rank."""
         # Get a taxon with non-canonical rank (clade)
         clade_taxon = Taxon(6072, sample_taxdb)  # Eumetazoa (clade)
 
-        with pytest.raises(Exception):  # Should raise TaxRankError
-            upper_rank_id(clade_taxon, sample_taxdb, "genus")
+        with pytest.raises(TaxRankError):
+            upper_rank_id(clade_taxon, "genus")
 
 
 class TestCLIErrorHandling:
@@ -346,59 +362,31 @@ class TestCLIErrorHandling:
         assert "Try search" in captured.err
 
     def test_handle_error_basic_functionality(self, capsys):
-        """Test basic error handling functionality."""
-        try:
-            from taxdumpy.cli import handle_error
+        from taxdumpy.cli import handle_error
 
-            # Test with a simple error
-            error = RuntimeError("Test error")
-            exit_code = handle_error(error)
-
-            assert exit_code == 1
-        except ImportError:
-            # handle_error function may not exist
-            pytest.skip("handle_error function not available")
+        assert handle_error(RuntimeError("Test error")) == 1
+        assert "Test error" in capsys.readouterr().err
 
 
 class TestRobustFileHandling:
     """Test robust file handling scenarios."""
 
-    def test_unicode_decode_error_handling(self, temp_dir):
-        """Test handling of files with encoding issues."""
-        # Create a file with invalid UTF-8
-        nodes_file = temp_dir / "nodes.dmp"
-        with open(nodes_file, "wb") as f:
-            f.write(b"1\t|\t1\t|\tno rank\t|\t\xff\xfe\t|\t8\t|\t0\t|\t1\t|\t0\t|\t0\t|\t0\t|\t0\t|\t0\t|\t\t|\n")
+    @pytest.mark.parametrize("backend", [TaxDb, TaxSQLite])
+    @pytest.mark.parametrize("filename", SOURCE_FILES)
+    def test_unicode_decode_error_handling(self, raw_source_dir, backend, filename):
+        path = raw_source_dir / filename
+        path.write_bytes(path.read_bytes() + b"\xff\xfe\n")
+        with pytest.raises(TaxdumpFileError, match=filename):
+            backend._build_cache(raw_source_dir)
+        assert not list(raw_source_dir.glob("taxdump.*"))
 
-        # Create other required files
-        for filename in ["merged.dmp", "delnodes.dmp", "division.dmp", "names.dmp"]:
-            if filename != "nodes.dmp":
-                (temp_dir / filename).write_text("1\t|\ttest\t|\t\t|\ttest\t|\n")
-
-        # Should handle encoding errors gracefully
-        with pytest.raises(TaxdumpFileError):
-            TaxDb(temp_dir)
-
-    def test_malformed_line_handling(self, temp_dir):
-        """Test handling of malformed lines in taxdump files."""
-        # Create files with some malformed lines
-        nodes_content = """1\t|\t1\t|\tno rank\t|\t\t|\t8\t|\t0\t|\t1\t|\t0\t|\t0\t|\t0\t|\t0\t|\t0\t|\t\t|
-malformed line without enough tabs
-2\t|\t1\t|\tspecies\t|\t\t|\t0\t|\t0\t|\t11\t|\t0\t|\t0\t|\t0\t|\t0\t|\t0\t|\t\t|
-"""
-
-        names_content = """1\t|\troot\t|\t\t|\tscientific name\t|
-incomplete
-2\t|\ttest species\t|\t\t|\tscientific name\t|
-"""
-
-        (temp_dir / "nodes.dmp").write_text(nodes_content)
-        (temp_dir / "names.dmp").write_text(names_content)
-
-        # Create other required files
-        for filename in ["merged.dmp", "delnodes.dmp", "division.dmp"]:
-            (temp_dir / filename).write_text("")
-
-        # Current implementation raises error for corrupted files
-        with pytest.raises(Exception):  # TaxdumpFileError or similar
-            TaxDb(temp_dir)
+    @pytest.mark.parametrize("backend", [TaxDb, TaxSQLite])
+    @pytest.mark.parametrize("filename", SOURCE_FILES)
+    def test_malformed_line_handling(self, raw_source_dir, backend, filename):
+        path = raw_source_dir / filename
+        count = len(path.read_text().splitlines())
+        with path.open("a") as stream:
+            stream.write("malformed line without tabs\n")
+        with pytest.raises(TaxdumpFileError, match=f"line {count + 1}"):
+            backend._build_cache(raw_source_dir)
+        assert not list(raw_source_dir.glob("taxdump.*"))

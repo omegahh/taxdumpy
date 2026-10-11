@@ -2,12 +2,16 @@
 
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Mapping
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Set, TypedDict, TypeVar
+from types import MappingProxyType
+from typing import Any, Callable, TypedDict, TypeVar
+
+from rapidfuzz import fuzz, process
 
 from taxdumpy.ansi import m_color
-from taxdumpy.basic import Node, ValidationError
+from taxdumpy.basic import Node, TaxDbError, ValidationError
 
 _T = TypeVar("_T")
 
@@ -110,35 +114,58 @@ class TaxonomyDatabase(ABC):
         """
         return self._rapid_fuzz(query, limit)
 
-    @abstractmethod
     def _rapid_fuzz(self, query: str, limit: int = 10) -> list[SearchResult]:
-        """
-        Perform fuzzy search on organism names.
-
-        Args:
-            query: Search query string
-            limit: Maximum number of results to return
-
-        Returns:
-            List of dictionaries with 'name', 'taxid', and 'score' keys
-
-        Raises:
-            ValidationError: If query or limit are invalid
-        """
-        pass
+        """Score distinct taxids using the backend's cached scientific names."""
+        if not isinstance(query, str):
+            raise ValidationError("query", type(query).__name__, "string")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValidationError("limit", limit, "positive integer")
+        if not query.strip():
+            return []
+        try:
+            results = process.extract(query.strip(), self._search_names, scorer=fuzz.WRatio, limit=min(limit, 1000))
+        except Exception as error:
+            raise TaxDbError(f"Fuzzy search failed: {error}") from error
+        return [{"name": name, "taxid": taxid, "score": score} for name, score, taxid in results]
 
     @abstract_cached_property
-    def all_names(self) -> List[str]:
-        """Get all scientific names in the database."""
+    def _search_names(self) -> dict[int, str]:
+        """Scientific-name candidates, keyed by taxid to preserve homonyms."""
         raise NotImplementedError
 
-    @abstract_cached_property
-    def name2taxid(self) -> Dict[str, int]:
-        """Get mapping from scientific names to taxids."""
+    @property
+    def all_names(self) -> list[str]:
+        """Return an independent list of scientific names, including homonyms."""
+        return list(self._search_names.values())
+
+    @cached_property
+    def name2taxids(self) -> Mapping[str, tuple[int, ...]]:
+        """Read-only mapping of scientific names to all matching taxids."""
+        names = {}
+        for taxid, name in self._search_names.items():
+            names.setdefault(name, []).append(taxid)
+        return MappingProxyType({name: tuple(sorted(taxids)) for name, taxids in names.items()})
+
+    @abstractmethod
+    def iter_parent_pairs(self) -> Iterable[tuple[int, int]]:
+        """Yield current child/parent pairs, excluding self loops and obsolete IDs."""
         raise NotImplementedError
 
+    @cached_property
+    def children_index(self) -> Mapping[int, tuple[int, ...]]:
+        """Explicitly materialize a read-only index for repeated global traversal."""
+        children = {}
+        for taxid, parent in self.iter_parent_pairs():
+            children.setdefault(parent, []).append(taxid)
+        return MappingProxyType({parent: tuple(sorted(ids)) for parent, ids in children.items()})
+
+    def children_for(self, parents: list[int]) -> list[int]:
+        """Return current children in parent order, with each sibling group sorted."""
+        children = self.children_index
+        return [child for parent in parents for child in children.get(parent, ())]
+
     @abstract_cached_property
-    def delnodes(self) -> Set[int]:
+    def delnodes(self) -> frozenset[int]:
         """Get set of deleted taxids."""
         raise NotImplementedError
 
@@ -196,13 +223,16 @@ class TaxonomyDatabase(ABC):
         return taxid
 
     def close(self) -> None:
-        """
-        Close database connection.
-
-        Default implementation does nothing. Backends that require
-        explicit cleanup should override this method.
-        """
-        pass
+        """Release derived global structures owned by this database instance."""
+        for name in (
+            "_search_names",
+            "name2taxids",
+            "children_index",
+            "delnodes",
+            "max_taxid_strlen",
+            "max_rank_strlen",
+        ):
+            self.__dict__.pop(name, None)
 
     def __enter__(self):
         """Context manager entry."""
