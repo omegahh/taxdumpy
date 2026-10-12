@@ -589,7 +589,7 @@ ruff check src/ tests/ scripts/ --fix
 ### Release Process
 
 A pushed `v*` tag starts the release workflow. It tests the tagged commit on
-Python 3.10–3.13, checks Ruff, verifies the tag matches `__version__`, and requires
+Python 3.10–3.15, checks Ruff, verifies the tag matches `__version__`, and requires
 the commit to belong to `main` history. It then builds and checks the wheel and
 sdist, publishes those artifacts to PyPI through OIDC, and creates the GitHub
 Release only after publishing succeeds. PyPI versions cannot be overwritten.
