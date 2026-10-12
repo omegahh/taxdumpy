@@ -125,8 +125,9 @@ class Taxon:
         """
         Lineage as comparable RC (rank code) objects.
 
-        Canonical ranks: R, D, K, P, C, O, F, G, S
-        Non-canonical ranks append depth: R1, F1, F2, G1, S1
+        Principal ranks: D, K, P, C, O, F, G, S.  Root is R, and realm
+        follows the closest principal rank with a distance suffix because
+        Kraken2 treats realm as an unranked intermediate.
 
         RC objects are comparable: RC("R") < RC("S"), RC("F") < RC("F1")
 

@@ -123,7 +123,8 @@ class TestFunctions:
             level = RANK2LEVEL[rank]
             assert RANK2LEVEL[LEVEL2RANK[level]] == level
 
-        assert set(RANKNAMES) == set(RANK_CODES) == set(MPA_CODES)
+        assert set(RANK_CODES) == set(RANKNAMES) - {"realm"}
+        assert set(MPA_CODES) == set(RANKNAMES)
         assert set(RANKNAMES) <= set(EXTENDED_RANKS)
         assert all(str(RC(code)) == code for code in RANK_CODES.values())
 
@@ -141,7 +142,7 @@ class TestFunctions:
         human_taxon = Taxon(sample_taxids["human"], sample_taxdb)
 
         # Trying to get species from species should raise error
-        with pytest.raises(RuntimeError):
+        with pytest.raises(TaxRankError):
             upper_rank_id(human_taxon, "species")
 
     def test_upper_rank_id_lower_rank_error(self, sample_taxdb, sample_taxids):
@@ -150,7 +151,7 @@ class TestFunctions:
         genus_taxon = Taxon(9605, sample_taxdb)  # Homo genus
 
         # Trying to get species from genus should raise error
-        with pytest.raises(RuntimeError):
+        with pytest.raises(TaxRankError):
             upper_rank_id(genus_taxon, "species")
 
     def test_upper_rank_id_invalid_current_rank(self, sample_taxdb):
@@ -223,7 +224,7 @@ class TestFunctions:
         realm = get_rank_taxid(virus, "realm")
         assert realm == 2559587
         assert get_canonical_ranks(virus)["realm"] == realm
-        assert Taxon(realm, sample_taxdb).rc == RC("R")
+        assert Taxon(realm, sample_taxdb).rc == RC("R2")
         assert virus.mpa_repr == "r__Riboviria"
         assert group_taxids_by_rank([2585030], "realm", sample_taxdb) == {realm: [2585030]}
         assert group_taxids_by_rank([2585030], "root", sample_taxdb) == {1: [2585030]}

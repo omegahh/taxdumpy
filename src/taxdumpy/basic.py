@@ -31,6 +31,8 @@ class RC(int):
     __slots__ = ()
 
     def __new__(cls, code: str | int):
+        if isinstance(code, bool):
+            raise ValueError(f"Invalid rank code: {code!r}")
         if isinstance(code, int):
             value = code
         elif isinstance(code, str) and code and code[0] in _RANKCODE_TO_LEVEL:
@@ -89,7 +91,7 @@ class TaxDbError(TaxdumpyError):
         return self.message
 
 
-class TaxidError(TaxdumpyError):
+class TaxidError(TaxDbError):
     """Raised when taxid-related operations fail."""
 
     def __init__(
@@ -105,7 +107,9 @@ class TaxidError(TaxdumpyError):
             message = f"Invalid or unknown taxid: {taxid}"
 
         self.message = message
-        super().__init__(self._format_message())
+        # TaxDbError calls the virtual formatter, so pass the unformatted
+        # message to avoid formatting suggestions twice.
+        super().__init__(self.message)
 
     def _format_message(self) -> str:
         """Format the error message with suggestions."""
@@ -115,7 +119,7 @@ class TaxidError(TaxdumpyError):
         return msg
 
 
-class TaxRankError(TaxdumpyError):
+class TaxRankError(TaxDbError):
     """Raised when taxonomic rank operations fail."""
 
     def __init__(self, rank: str, message: str | None = None, valid_ranks: list | None = None):
@@ -126,7 +130,9 @@ class TaxRankError(TaxdumpyError):
             message = f"Invalid taxonomic rank: '{rank}'"
 
         self.message = message
-        super().__init__(self._format_message())
+        # TaxDbError calls the virtual formatter, so pass the unformatted
+        # message to avoid formatting valid ranks twice.
+        super().__init__(self.message)
 
     def _format_message(self) -> str:
         """Format the error message with valid ranks."""

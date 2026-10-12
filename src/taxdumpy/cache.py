@@ -25,7 +25,12 @@ def source_signature(directory: Path) -> dict[str, tuple[int, int]]:
 def cache_is_stale(path: Path, signature: dict | None = None) -> bool:
     current = source_signature(path.parent)
     if signature is not None:
-        return any(signature.get(name) != value for name, value in current.items())
+        # A completely source-free directory is a supported standalone-cache
+        # mode.  If any source remains, however, compare the complete key set
+        # as well as metadata so deleting a source file invalidates the cache.
+        if not current:
+            return False
+        return current != signature
     # Older caches have no source metadata. Preserve compatibility using mtimes.
     cache_mtime = path.stat().st_mtime_ns
     return any(mtime > cache_mtime for size, mtime in current.values())

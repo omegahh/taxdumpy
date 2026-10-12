@@ -11,7 +11,7 @@ from typing import Any, Callable, TypedDict, TypeVar
 from rapidfuzz import fuzz, process
 
 from taxdumpy.ansi import m_color
-from taxdumpy.basic import Node, TaxDbError, ValidationError
+from taxdumpy.basic import Node, TaxDbError, TaxidError, ValidationError
 
 _T = TypeVar("_T")
 
@@ -101,7 +101,13 @@ class TaxonomyDatabase(ABC):
             return
         for result in results:
             taxid = result["taxid"]
-            node = self.get_node(taxid)
+            # _search_names is defined over current nodes, but tolerate a
+            # backend/cache that contains an obsolete candidate so one bad
+            # row does not abort an otherwise useful search display.
+            try:
+                node = self.get_node(taxid)
+            except TaxidError:
+                continue
             name = re.sub(re.escape(query.strip()), m_color, result["name"], flags=re.IGNORECASE)
             print(f"{taxid:<{self.max_taxid_strlen}}\t{node.rank:<{self.max_rank_strlen}}\t{name}")
 
@@ -110,6 +116,8 @@ class TaxonomyDatabase(ABC):
 
         Scores range from 0 to 100. Each taxid is a distinct candidate even
         when scientific names are identical. Results are ordered by score.
+        ``limit`` must be a positive integer; results are not capped at an
+        arbitrary backend-specific maximum.
         Raises ValidationError for invalid inputs and TaxDbError on failure.
         """
         return self._rapid_fuzz(query, limit)
@@ -122,8 +130,12 @@ class TaxonomyDatabase(ABC):
             raise ValidationError("limit", limit, "positive integer")
         if not query.strip():
             return []
+        # Materialize the backend cache outside the fuzzy-matching error
+        # boundary.  Database/cache failures should retain their original
+        # exception instead of being reported as a matching failure.
+        names = self._search_names
         try:
-            results = process.extract(query.strip(), self._search_names, scorer=fuzz.WRatio, limit=min(limit, 1000))
+            results = process.extract(query.strip(), names, scorer=fuzz.WRatio, limit=limit)
         except Exception as error:
             raise TaxDbError(f"Fuzzy search failed: {error}") from error
         return [{"name": name, "taxid": taxid, "score": score} for name, score, taxid in results]
@@ -133,10 +145,15 @@ class TaxonomyDatabase(ABC):
         """Scientific-name candidates, keyed by taxid to preserve homonyms."""
         raise NotImplementedError
 
+    @cached_property
+    def _all_names_values(self) -> tuple[str, ...]:
+        """Cache the values snapshot while keeping ``all_names`` independent."""
+        return tuple(self._search_names.values())
+
     @property
     def all_names(self) -> list[str]:
         """Return an independent list of scientific names, including homonyms."""
-        return list(self._search_names.values())
+        return list(self._all_names_values)
 
     @cached_property
     def name2taxids(self) -> Mapping[str, tuple[int, ...]]:
@@ -148,7 +165,11 @@ class TaxonomyDatabase(ABC):
 
     @abstractmethod
     def iter_parent_pairs(self) -> Iterable[tuple[int, int]]:
-        """Yield current child/parent pairs, excluding self loops and obsolete IDs."""
+        """Yield ``(child_taxid, parent_taxid)`` pairs for current nodes.
+
+        Self loops and obsolete IDs are excluded.  The child-first order is
+        part of the backend contract and is consumed by ``children_index``.
+        """
         raise NotImplementedError
 
     @cached_property
@@ -226,6 +247,7 @@ class TaxonomyDatabase(ABC):
         """Release derived global structures owned by this database instance."""
         for name in (
             "_search_names",
+            "_all_names_values",
             "name2taxids",
             "children_index",
             "delnodes",

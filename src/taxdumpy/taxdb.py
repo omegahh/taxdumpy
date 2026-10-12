@@ -126,7 +126,16 @@ class TaxDb(TaxonomyDatabase):
             if not isinstance(taxid2nodes, dict) or not isinstance(old2news, dict) or not isinstance(del_taxids, set):
                 raise ValueError("Invalid pickle cache structure")
             if not isinstance(names_by_class, dict) or not all(
-                isinstance(name_class, str) and isinstance(names, dict) for name_class, names in names_by_class.items()
+                isinstance(name_class, str)
+                and isinstance(names, dict)
+                and all(
+                    isinstance(taxid, int)
+                    and not isinstance(taxid, bool)
+                    and isinstance(values, tuple)
+                    and all(isinstance(value, str) for value in values)
+                    for taxid, values in names.items()
+                )
+                for name_class, names in names_by_class.items()
             ):
                 raise ValueError("Invalid names cache structure")
             if cache_is_stale(self._pickle, signature):

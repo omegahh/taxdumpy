@@ -210,7 +210,12 @@ class TaxSQLite(TaxonomyDatabase):
         return {
             row["taxid"]: row["name"]
             for row in self._conn.execute(
-                "SELECT taxid, name FROM names WHERE name_class='scientific name' ORDER BY taxid"
+                """
+                SELECT n.taxid, s.name
+                FROM nodes n
+                JOIN names s ON s.taxid = n.taxid AND s.name_class = 'scientific name'
+                ORDER BY n.taxid
+                """
             )
         }
 

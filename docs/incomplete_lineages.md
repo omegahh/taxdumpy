@@ -24,7 +24,7 @@ with TaxDb("/path/to/taxdump") as db:
 `upper_rank_id(taxon, rank)` is strict. It requires a canonical starting rank
 and a strictly higher canonical target. It accepts the target's subrank when
 necessary but raises `TaxRankError` if neither is present. Asking for an equal
-or lower rank raises `RuntimeError`; it does not fall back to another rank.
+or lower rank also raises `TaxRankError`; it does not fall back to another rank.
 
 ```python
 from taxdumpy import TaxDb, Taxon, TaxRankError, upper_rank_id

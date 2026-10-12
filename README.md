@@ -481,15 +481,17 @@ from taxdumpy import (
     group_taxids_by_rank,# Group a list of taxids at a given rank
 )
 
-# The rank tables live in taxdumpy.functions, not the package root:
-from taxdumpy.functions import RANKNAMES, EXTENDED_RANKS
+# The rank tables live in taxdumpy.ranks, not the package root:
+from taxdumpy.ranks import RANKNAMES, RANK_CODES, EXTENDED_RANKS
 # RANKNAMES:      9 canonical levels, species → realm (domain/superkingdom are aliases)
+# RANK_CODES:     principal ranks only; realm is treated as an unranked intermediate
 # EXTENDED_RANKS: 32 names including sub-ranks and aliases
 ```
 
 `domain` and `superkingdom` resolve to the same rank level. Realm uses `r__` in
-MPA output and the root-level `R` rank code, preserving existing integer `RC`
-values. Grouping by `root` always selects taxid 1, including viral lineages.
+MPA output. It is treated as an unranked intermediate for `RC` values, so its
+code inherits the closest principal rank with a distance suffix. Grouping by
+`root` always selects taxid 1, including viral lineages.
 
 `upper_rank_id(taxon, rank)` requires the requested higher rank or its subrank to exist in
 the lineage; otherwise it raises `TaxRankError`. Use `get_closest_rank` or

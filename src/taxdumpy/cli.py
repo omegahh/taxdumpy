@@ -14,6 +14,7 @@ from taxdumpy.basic import (
     TaxdumpFileError,
     TaxdumpyError,
     TaxidError,
+    TaxRankError,
     ValidationError,
 )
 from taxdumpy.cache import install_caches, source_signature
@@ -51,6 +52,9 @@ def handle_error(error: BaseException, exit_code: int = 1) -> int:
 
     elif isinstance(error, TaxidError):
         print(f"❌ TaxID Error: {error}", file=sys.stderr)
+
+    elif isinstance(error, TaxRankError):
+        print(f"❌ Rank Error: {error}", file=sys.stderr)
 
     elif isinstance(error, TaxDbError):
         print(f"❌ Database Error: {error}", file=sys.stderr)
@@ -122,6 +126,7 @@ def _params_parser():
     # Create subcommands
     sub_parsers = parser.add_subparsers(
         dest="command",
+        required=True,
         title="Available commands",
         description="Choose one of the following commands",
         help="Command to execute",
@@ -132,6 +137,10 @@ def _params_parser():
         "cache",
         help="Build and cache taxonomy databases",
         description="Build both SQLite and pickle databases from NCBI taxdump files",
+    )
+    cache_parser.add_argument(
+        "--verbose", "-v", action="store_true", default=argparse.SUPPRESS,
+        help="Enable verbose output with debugging information",
     )
     cache_parser.add_argument(
         "-d",
@@ -156,6 +165,10 @@ def _params_parser():
         description="Display the complete taxonomic lineage for a given NCBI taxonomy ID",
     )
     trace_parser.add_argument(
+        "--verbose", "-v", action="store_true", default=argparse.SUPPRESS,
+        help="Enable verbose output with debugging information",
+    )
+    trace_parser.add_argument(
         "-d",
         "--directory",
         dest="taxdb",
@@ -175,6 +188,10 @@ def _params_parser():
         "search",
         help="Search for organisms by name",
         description="Fuzzy search for organisms by scientific name",
+    )
+    sname_parser.add_argument(
+        "--verbose", "-v", action="store_true", default=argparse.SUPPRESS,
+        help="Enable verbose output with debugging information",
     )
     sname_parser.add_argument(
         "-d",
@@ -242,17 +259,14 @@ def main(args: list[str] | None = None) -> int:
 
         # Execute the requested command
         try:
-            if parsed_args.command == "search" and (parsed_args.limit < 1 or parsed_args.limit > 1000):
-                raise ValidationError("limit", parsed_args.limit, "integer between 1 and 1000")
+            if parsed_args.command == "search" and parsed_args.limit < 1:
+                raise ValidationError("limit", parsed_args.limit, "positive integer")
             if parsed_args.command == "cache":
                 return _handle_cache_command(parsed_args, taxdb_path)
             elif parsed_args.command == "lineage":
                 return _handle_lineage_command(parsed_args, taxdb_path)
             elif parsed_args.command == "search":
                 return _handle_search_command(parsed_args, taxdb_path)
-            else:
-                print(f"❌ Unknown command: {parsed_args.command}", file=sys.stderr)
-                return 1
 
         except KeyboardInterrupt:
             return handle_error(KeyboardInterrupt())
@@ -344,7 +358,10 @@ def _handle_lineage_command(args, taxdb_path: Path) -> int:
     try:
         print(f"🔍 Looking up lineage for TaxID {args.taxid}...")
 
-        backend = TaxDb(taxdb_path, fast=True) if args.fast else TaxSQLite(taxdb_path)
+        verbose = getattr(args, "verbose", False)
+        backend = TaxDb(taxdb_path, fast=True, verbose=verbose) if args.fast else TaxSQLite(
+            taxdb_path, verbose=verbose
+        )
         with backend as taxdb:
             taxon = Taxon(args.taxid, taxdb)
             print(taxon.__repr__())
@@ -362,20 +379,26 @@ def _handle_search_command(args, taxdb_path: Path) -> int:
 
         if args.fast:
             print("⚡ Using fast mode")
-        backend = TaxDb(taxdb_path, fast=True) if args.fast else TaxSQLite(taxdb_path)
+        verbose = getattr(args, "verbose", False)
+        backend = TaxDb(taxdb_path, fast=True, verbose=verbose) if args.fast else TaxSQLite(
+            taxdb_path, verbose=verbose
+        )
         with backend as taxdb:
             results = taxdb.search(args.keyword, limit=args.limit)
             if not results:
                 print(f"❌ No results found for '{args.keyword}'")
                 print("💡 Try a different search term or check spelling")
-                return 0
+                return 1
 
             print(f"\n📊 Found {len(results)} results:")
             print(f"{'TaxID':<10} {'Rank':<15} {'Name'}")
             print("-" * 60)
 
             for result in results:
-                node = taxdb.get_node(result["taxid"])
+                try:
+                    node = taxdb.get_node(result["taxid"])
+                except TaxidError:
+                    continue
                 score_str = f"({result['score']:.1f}%)" if result["score"] < 100 else ""
                 print(f"{result['taxid']:<10} {node.rank:<15} {result['name']} {score_str}")
 

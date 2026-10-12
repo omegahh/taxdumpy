@@ -8,7 +8,7 @@ from collections.abc import Mapping
 
 from taxdumpy.basic import TaxDbError, TaxidError, TaxRankError, ValidationError
 from taxdumpy.database import TaxonomyDatabase
-from taxdumpy.ranks import EXTENDED_RANKS, LEVEL2RANK, RANK2LEVEL, RANK_ALIASES, RANK_CODES, RANKNAMES, RankName
+from taxdumpy.ranks import LEVEL2RANK, RANK2LEVEL, RANK_ALIASES, RANKNAMES, RankName
 from taxdumpy.taxon import Taxon
 
 
@@ -33,7 +33,7 @@ def upper_rank_id(
     curr_level = RANK2LEVEL[curr_rank]
     high_level = RANK2LEVEL[rank]
     if high_level <= curr_level:
-        raise RuntimeError(f"{rank=} is in lower/equal level than {curr_rank=} in phylogenetic tree")
+        raise TaxRankError(rank, f"{rank=} is in lower/equal level than {curr_rank=} in phylogenetic tree")
     taxid = get_rank_taxid(tax, rank)
     if taxid is not None:
         return taxid
