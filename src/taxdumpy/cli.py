@@ -139,7 +139,10 @@ def _params_parser():
         description="Build both SQLite and pickle databases from NCBI taxdump files",
     )
     cache_parser.add_argument(
-        "--verbose", "-v", action="store_true", default=argparse.SUPPRESS,
+        "--verbose",
+        "-v",
+        action="store_true",
+        default=argparse.SUPPRESS,
         help="Enable verbose output with debugging information",
     )
     cache_parser.add_argument(
@@ -165,7 +168,10 @@ def _params_parser():
         description="Display the complete taxonomic lineage for a given NCBI taxonomy ID",
     )
     trace_parser.add_argument(
-        "--verbose", "-v", action="store_true", default=argparse.SUPPRESS,
+        "--verbose",
+        "-v",
+        action="store_true",
+        default=argparse.SUPPRESS,
         help="Enable verbose output with debugging information",
     )
     trace_parser.add_argument(
@@ -190,7 +196,10 @@ def _params_parser():
         description="Fuzzy search for organisms by scientific name",
     )
     sname_parser.add_argument(
-        "--verbose", "-v", action="store_true", default=argparse.SUPPRESS,
+        "--verbose",
+        "-v",
+        action="store_true",
+        default=argparse.SUPPRESS,
         help="Enable verbose output with debugging information",
     )
     sname_parser.add_argument(
@@ -359,9 +368,7 @@ def _handle_lineage_command(args, taxdb_path: Path) -> int:
         print(f"🔍 Looking up lineage for TaxID {args.taxid}...")
 
         verbose = getattr(args, "verbose", False)
-        backend = TaxDb(taxdb_path, fast=True, verbose=verbose) if args.fast else TaxSQLite(
-            taxdb_path, verbose=verbose
-        )
+        backend = TaxDb(taxdb_path, fast=True, verbose=verbose) if args.fast else TaxSQLite(taxdb_path, verbose=verbose)
         with backend as taxdb:
             taxon = Taxon(args.taxid, taxdb)
             print(taxon.__repr__())
@@ -380,9 +387,7 @@ def _handle_search_command(args, taxdb_path: Path) -> int:
         if args.fast:
             print("⚡ Using fast mode")
         verbose = getattr(args, "verbose", False)
-        backend = TaxDb(taxdb_path, fast=True, verbose=verbose) if args.fast else TaxSQLite(
-            taxdb_path, verbose=verbose
-        )
+        backend = TaxDb(taxdb_path, fast=True, verbose=verbose) if args.fast else TaxSQLite(taxdb_path, verbose=verbose)
         with backend as taxdb:
             results = taxdb.search(args.keyword, limit=args.limit)
             if not results:
