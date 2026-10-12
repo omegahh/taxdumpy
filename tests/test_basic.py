@@ -47,9 +47,12 @@ class TestRCValidation:
             division="root",
         )
 
-        # Should not be able to add arbitrary attributes
+        assert not hasattr(node, "__dict__")
+
+        # Test slots directly: frozen dataclasses can raise TypeError for
+        # unknown attributes on older CPython versions.
         with pytest.raises(AttributeError):
-            node.arbitrary_attr = "test"
+            object.__setattr__(node, "arbitrary_attr", "test")
 
 
 class TestExceptions:
