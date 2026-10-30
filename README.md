@@ -5,7 +5,7 @@ _A high-performance Python toolkit for parsing NCBI Taxonomy databases with line
 [![CI](https://github.com/omegahh/taxdumpy/workflows/CI/badge.svg)](https://github.com/omegahh/taxdumpy/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/taxdumpy?color=green)](https://pypi.org/project/taxdumpy/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Development Status](https://img.shields.io/badge/Development%20Status-5%20Production/Stable-brightgreen)](https://pypi.org/project/taxdumpy/)
 [![codecov](https://codecov.io/gh/omegahh/taxdumpy/branch/main/graph/badge.svg)](https://codecov.io/gh/omegahh/taxdumpy)
 
@@ -549,7 +549,7 @@ Python version, and machine. No fixed full-database performance estimate is impl
 
 ## Requirements
 
-- **Python**: 3.10+
+- **Python**: 3.11+
 - **Dependencies**: `rapidfuzz`
 - **Data**: Extracted NCBI taxdump files for cache building; size varies by release
 - **Memory**: Depends on backend, cached subset size, stored names, and global operations
@@ -582,14 +582,14 @@ pytest --cov=taxdumpy --cov-report=html
 
 ```bash
 # Format code and sort imports
-ruff format src/ tests/ scripts/
-ruff check src/ tests/ scripts/ --fix
+ruff format src/ tests/
+ruff check src/ tests/ --fix
 ```
 
 ### Release Process
 
 A pushed `v*` tag starts the release workflow. It tests the tagged commit on
-Python 3.10–3.15, checks Ruff, verifies the tag matches `__version__`, and requires
+Python 3.11–3.15, checks Ruff, verifies the tag matches `__version__`, and requires
 the commit to belong to `main` history. It then builds and checks the wheel and
 sdist, publishes those artifacts to PyPI through OIDC, and creates the GitHub
 Release only after publishing succeeds. PyPI versions cannot be overwritten.
@@ -598,29 +598,15 @@ The PyPI trusted publisher uses `release.yml` and the GitHub Actions environment
 `pypi`, whose protection rules allow `main` and `v*` tags. Production publishing
 is performed only by this workflow; no local Twine production upload is needed.
 
-The helper requires a clean worktree, updates the version, runs tests and Ruff,
-and builds/checks fresh artifacts in a unique directory under `dist/`. By default
-it prepares everything locally for review, without committing or pushing:
+Update `__version__` in `src/taxdumpy/__init__.py`, run the test and lint checks,
+then commit the version change and push the commit and matching tag from `main`:
 
 ```bash
-python scripts/release.py --version 1.4.0
-```
-
-For an intended production release, start with a clean `main` branch and use
-`--publish`. It verifies local `main` includes remote `main`, validates/builds,
-then commits the version, tags it, and atomically pushes `main` and the tag:
-
-```bash
-python scripts/release.py --version 1.4.0 --publish
-```
-
-For TestPyPI, use the separate mode below. It uploads only freshly built artifacts
-to TestPyPI and never commits, tags, or pushes. Canonical prerelease versions
-such as `1.4.0rc1` are accepted. The old `--upload`, `--test`, and `--skip-tests`
-options have been removed.
-
-```bash
-python scripts/release.py --version 1.4.0rc1 --test-pypi
+python -m pytest
+ruff format --check src/ tests/
+ruff check src/ tests/
+git tag vX.Y.Z
+git push origin main vX.Y.Z
 ```
 
 ## License

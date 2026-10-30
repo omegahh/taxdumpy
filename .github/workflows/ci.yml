@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
 
     steps:
       - uses: actions/checkout@v4
@@ -28,8 +28,8 @@ jobs:
 
       - name: Check formatting and import sorting with ruff
         run: |
-          ruff check src/ tests/ scripts/  # Only checks import sorting (I rules)
-          ruff format --check --diff src/ tests/ scripts/
+          ruff check src/ tests/  # Only checks import sorting (I rules)
+          ruff format --check --diff src/ tests/
 
       - name: Run tests with coverage
         run: pytest --cov=taxdumpy --cov-report=xml --cov-fail-under=80
