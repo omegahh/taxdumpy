@@ -8,6 +8,7 @@ from pathlib import Path
 
 SOURCE_FILES = ("merged.dmp", "delnodes.dmp", "division.dmp", "nodes.dmp", "names.dmp")
 CACHE_FORMAT_VERSION = 3
+CACHE_FILE_MODE = 0o644
 
 
 def source_signature(directory: Path) -> dict[str, tuple[int, int]]:
@@ -45,6 +46,7 @@ def atomic_pickle_dump(path: Path, data) -> None:
             pickle.dump(data, stream, protocol=pickle.HIGHEST_PROTOCOL)
             stream.flush()
             os.fsync(stream.fileno())
+        os.chmod(temporary, CACHE_FILE_MODE)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)

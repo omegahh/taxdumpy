@@ -13,7 +13,7 @@ from pathlib import Path
 
 from taxdumpy.ansi import u_str
 from taxdumpy.basic import DatabaseCorruptionError, Node, TaxdumpFileError, TaxidError
-from taxdumpy.cache import CACHE_FORMAT_VERSION, cache_is_stale, source_signature
+from taxdumpy.cache import CACHE_FILE_MODE, CACHE_FORMAT_VERSION, cache_is_stale, source_signature
 from taxdumpy.database import TaxonomyDatabase
 from taxdumpy.parsers import check_sources, deleted_rows, division_rows, merged_rows, name_rows, node_rows
 
@@ -110,6 +110,7 @@ class TaxSQLite(TaxonomyDatabase):
         try:
             self._build_database(conn)
             conn.close()
+            os.chmod(tmp_path, CACHE_FILE_MODE)
             os.replace(tmp_path, self._db_path)
         except BaseException:
             conn.close()

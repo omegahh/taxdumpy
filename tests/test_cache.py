@@ -2,12 +2,22 @@
 
 import os
 import pickle
+import stat
 from unittest.mock import patch
 
 import pytest
 
 from taxdumpy import TaxDb, TaxdumpFileError, TaxSQLite
 from taxdumpy.cache import atomic_pickle_dump
+
+
+@pytest.mark.parametrize("filename", ["taxdump.pickle", "taxdump.sqlite"])
+def test_cache_files_default_to_world_readable(cached_dir, filename):
+    assert stat.S_IMODE((cached_dir / filename).stat().st_mode) == 0o644
+
+
+def test_fast_cache_defaults_to_world_readable(fast_cache_dir):
+    assert stat.S_IMODE((fast_cache_dir / "taxdump_fast.pickle").stat().st_mode) == 0o644
 
 
 def test_interrupted_pickle_write_preserves_previous_cache(tmp_path):
